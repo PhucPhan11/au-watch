@@ -5,19 +5,32 @@ import * as goldapi from './fetchers/goldapi.js';
 import * as swissquote from './fetchers/swissquote.js';
 import * as vcb from './fetchers/vcb.js';
 import * as erapi from './fetchers/erapi.js';
+import * as ngoctham from './fetchers/ngoctham.js';
+import * as minhvu from './fetchers/minhvu.js';
+import * as huythanh from './fetchers/huythanh.js';
 
-export const FETCHERS = { pnj, goldapi, swissquote, vcb, erapi };
+export const FETCHERS = { pnj, goldapi, swissquote, vcb, erapi, ngoctham, minhvu, huythanh };
 
 const byCode = (code) => (quotes) => quotes.filter((q) => q.code === code);
 const first = (quotes) => quotes.slice(0, 1);
+const all = (quotes) => quotes;
 
-export const SLOTS = [
+/** Cần Thơ store slots: one slot per store holding its whole price list. */
+export const STORE_SLOTS = [
+  { key: 'cantho_ngoctham', sources: [{ fetcher: 'ngoctham', pick: all }] },
+  { key: 'cantho_minhvu', sources: [{ fetcher: 'minhvu', pick: all }] },
+  { key: 'cantho_huythanh', sources: [{ fetcher: 'huythanh', pick: all }] },
+];
+
+export const CORE_SLOTS = [
   // SJC bars come from PNJ's price list (sjc.com.vn's robots.txt blocks AI agents; not used).
   { key: 'vn_sjc', sources: [{ fetcher: 'pnj', pick: byCode('SJC') }] },
   { key: 'vn_pnj_ring', sources: [{ fetcher: 'pnj', pick: byCode('N24K') }] },
   { key: 'world_xau', sources: [{ fetcher: 'goldapi', pick: first }, { fetcher: 'swissquote', pick: first }] },
   { key: 'fx_usdvnd', sources: [{ fetcher: 'vcb', pick: first }, { fetcher: 'erapi', pick: first }] },
 ];
+
+export const SLOTS = [...CORE_SLOTS, ...STORE_SLOTS];
 
 export async function refreshOnce({ cache, http, fetchers = FETCHERS, slots = SLOTS, now = () => new Date(), onFetch = null }) {
   // Each source is requested at most once per cycle, even if several slots use it.

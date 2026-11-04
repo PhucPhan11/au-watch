@@ -70,6 +70,15 @@ test('changed values insert a new row only for that series', () => {
   assert.deepEqual(world.map((r) => r.sell), [3941, 3950]);
 });
 
+test('store slots (Cần Thơ price lists) are not recorded', () => {
+  const h = openHistory(file);
+  const s = allSlots(T0);
+  s.cantho_ngoctham = { ...slot('vn_sjc', 128_500_000, 132_000_000, T0), key: 'cantho_ngoctham' };
+  assert.deepEqual(h.record(s), { inserted: 4, touched: 0 });
+  h.close();
+  assert.ok(!rows().some((r) => r.series.startsWith('cantho_')));
+});
+
 test('stale or empty slots are not written', () => {
   const h = openHistory(file);
   const s = allSlots(T0);

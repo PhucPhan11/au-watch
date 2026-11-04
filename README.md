@@ -20,7 +20,7 @@ No API keys are needed. If keys are ever added, they belong in `.env`, which git
 | `REFRESH_MINUTES` | `10` | Minutes between refreshes. Values below 5 are raised to 5. |
 | `USER_AGENT` | `au-watch/0.1` | User-Agent sent to sources |
 | `DATA_DIR` | `./data` | Where `cache.json`, `history.db` and `scheduler.lock` live |
-| `PNJ_URL`, `GOLDAPI_URL`, `SWISSQUOTE_URL`, `VCB_URL`, `ERAPI_URL` | real endpoints | Override a source URL, for example to simulate an outage |
+| `PNJ_URL`, `GOLDAPI_URL`, `SWISSQUOTE_URL`, `VCB_URL`, `ERAPI_URL`, `NGOCTHAM_URL`, `MINHVU_URL`, `HUYTHANH_URL` | real endpoints | Override a source URL, for example to simulate an outage |
 
 ## Run
 ```bash
@@ -46,6 +46,22 @@ Tests use responses saved in `test/fixtures/` and never touch the network.
 | USD/VND | Vietcombank `api/exchangerates`, **sell** rate | open.er-api.com daily mid rate, shown as "tham khảo" |
 
 Each source is requested at most once per refresh (both Vietnamese rows share one PNJ request), with a 10 s timeout and no retry loop. The page shows "(dự phòng)" whenever a fallback source supplied a value.
+
+### Giá vàng tại Cần Thơ
+The local app also shows every gold type listed by three Cần Thơ stores, one table per store:
+
+| Store | Source | How it's read |
+|---|---|---|
+| Ngọc Thẩm | `ngoctham.com/ajax/proxy_banggia.php` | the JSON feed the store's own price page uses (unit on the site: VND/chỉ) |
+| Minh Vũ | `minhvujewelry.vn/` | the "Bảng giá vàng" HTML table on the homepage |
+| Huy Thanh | `huythanhjewelry.vn/gia-vang-hom-nay` | price data embedded in the page (unit on the site: Đồng/chỉ), with the store's own product labels |
+
+- **Units:** the stores quote prices per chỉ. The app multiplies by 10 to show đ/lượng, like the rest of the page.
+- **Gap:** shown only for near-pure gold (24K / 999 / 9999 / SJC). Alloys such as 18K or 610 show prices only.
+- **Times:** each table shows the store's own update time and when au-watch fetched it.
+- **Stale data:** if a store can't be fetched, its last known table stays visible, marked "Dữ liệu cũ".
+- **No history:** store prices aren't written to the history database.
+- **Not on GitHub Pages:** the stores don't allow browser requests (no CORS headers), so this section only appears in the local app.
 
 ## How the gap is calculated
 ```
@@ -150,3 +166,8 @@ python -m http.server 8080 --directory _site     # then open http://localhost:80
 - History starts when the app first runs. There is no backfill, so the longer ranges stay empty until enough data has been recorded.
 - Old history is never deleted. At one row per price change, it grows by a few MB per year.
 - There are no alerts or user accounts, and no custom domain, CDN or analytics.
+- **Cần Thơ stores are read from their websites, not official APIs.**
+  - Minh Vũ's prices are parsed from HTML, and Huy Thanh's from the page's embedded Next.js data.
+  - If either site changes its markup, that store's table goes stale and the log shows the parse error.
+  - Minh Vũ doesn't state its unit. Per chỉ is inferred from the size of the numbers, and a range check rejects values that don't fit.
+  - Minh Vũ updates its table rarely (sometimes once a day), so its gap can lag the market.

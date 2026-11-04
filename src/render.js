@@ -47,9 +47,52 @@ const HISTORY_SECTION = `<section class="history" id="history">
 `;
 const HISTORY_SCRIPTS = '<script src="/assets/uPlot.iife.min.js"></script>\n<script src="/assets/charts.js"></script>\n';
 const NO_HISTORY_NOTE = '<p class="note">Biểu đồ lịch sử chỉ có khi chạy ứng dụng trên máy (npm start).</p>\n';
+const NO_STORES_NOTE = '<p class="note">Giá cửa hàng Cần Thơ chỉ có khi chạy ứng dụng trên máy (npm start).</p>\n';
 
-/** withHistory: false → no chart section or chart assets (static GitHub Pages build). */
-export function renderPage(slots, { withHistory = true } = {}) {
+const STORES = [
+  { key: 'cantho_ngoctham', name: 'Ngọc Thẩm' },
+  { key: 'cantho_minhvu', name: 'Minh Vũ' },
+  { key: 'cantho_huythanh', name: 'Huy Thanh' },
+];
+
+const gapHtml = (sell, worldVnd) => {
+  const g = gap(sell, worldVnd);
+  return `${g.abs >= 0 ? '+' : ''}${vnd(g.abs)} đ<br><small>${pct(g.pct)}%</small>`;
+};
+
+/** One table per Cần Thơ store; gap only for near-pure gold (24K / 9999 / SJC) with a sell price. */
+function renderStores(slots, worldVnd) {
+  const tables = STORES.map(({ key, name }) => {
+    const slot = slots[key];
+    const quotes = slot?.quotes ?? [];
+    const updated = quotes[0]?.source_updated_at;
+    const rows = quotes.map((q) => `<tr>
+        <td data-label="Loại vàng">${esc(q.product)}</td>
+        <td data-label="Mua vào">${q.buy != null ? vnd(q.buy) : '—'}</td>
+        <td data-label="Bán ra">${q.sell != null ? vnd(q.sell) : '—'}</td>
+        <td data-label="Chênh lệch">${q.pure && q.sell != null && worldVnd ? gapHtml(q.sell, worldVnd) : '—'}</td>
+      </tr>`).join('');
+    return `<div class="store${slot?.stale ? ' stale' : ''}">
+    <h3><span>${esc(name)}</span><span class="meta">Cửa hàng cập nhật: ${time(updated)} · Lấy lúc: ${time(slot?.ok_at)} ${status(slot)}</span></h3>
+    <table>
+      <thead><tr><th>Loại vàng</th><th>Mua vào</th><th>Bán ra</th><th>Chênh lệch so với thế giới</th></tr></thead>
+      <tbody>${rows || '<tr><td colspan="4">Chưa có dữ liệu</td></tr>'}</tbody>
+    </table>
+  </div>`;
+  }).join('\n  ');
+  return `<section class="stores" id="stores">
+  <h2>Giá vàng tại Cần Thơ</h2>
+  <p class="sub">Đơn vị: đồng/lượng (quy đổi từ giá/chỉ × 10). Chênh lệch chỉ tính cho vàng 24K / 9999 / SJC.</p>
+  ${tables}
+</section>
+`;
+}
+
+/**
+ * withHistory: false → no chart section or chart assets (static GitHub Pages build).
+ * withStores: false → no Cần Thơ store section (the stores can't be fetched from a browser).
+ */
+export function renderPage(slots, { withHistory = true, withStores = true } = {}) {
   const world = slots.world_xau?.quotes?.[0];
   const fx = slots.fx_usdvnd?.quotes?.[0];
   const worldUsd = world ? mid(world) : null;
@@ -111,6 +154,12 @@ ${withHistory ? HISTORY_HEAD : ''}<style>
     td[data-label]:not(:first-child)::before { content: attr(data-label); color: #555; text-align: left; }
     .info { grid-template-columns: 1fr; }
   }
+  .stores { margin-top: 28px; }
+  .stores h2 { font-size: 1.05rem; margin: 0 0 4px; }
+  .store { margin-top: 16px; }
+  .store h3 { font-size: .95rem; margin: 0 0 6px; display: flex; flex-wrap: wrap; gap: 4px 12px; justify-content: space-between; align-items: baseline; }
+  .store .meta { font-size: .8rem; font-weight: normal; color: #666; }
+  .store.stale td { background: #fff7e6; }
   .history { margin-top: 28px; }
   .history h2 { font-size: 1.05rem; margin: 0 0 8px; }
   .history h3 { font-size: .95rem; margin: 20px 0 6px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; justify-content: space-between; }
@@ -146,7 +195,7 @@ ${withHistory ? HISTORY_HEAD : ''}<style>
     <small>Nguồn: ${esc(sourceName(fs))} · Cập nhật: ${time(fs?.ok_at)}</small> ${status(fs)}
   </div>
 </div>
-${withHistory ? HISTORY_SECTION : NO_HISTORY_NOTE}<p class="note">Chênh lệch = giá bán ra trong nước − giá thế giới quy đổi (giá USD/oz × 1,205653 oz/lượng × tỷ giá). Chưa tính thuế, phí gia công, vận chuyển. Chỉ mang tính tham khảo.</p>
+${withStores ? renderStores(slots, worldVnd) : NO_STORES_NOTE}${withHistory ? HISTORY_SECTION : NO_HISTORY_NOTE}<p class="note">Chênh lệch = giá bán ra trong nước − giá thế giới quy đổi (giá USD/oz × 1,205653 oz/lượng × tỷ giá). Chưa tính thuế, phí gia công, vận chuyển. Chỉ mang tính tham khảo.</p>
 ${withHistory ? HISTORY_SCRIPTS : ''}</body>
 </html>`;
 }

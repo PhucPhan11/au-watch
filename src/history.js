@@ -60,6 +60,7 @@ export function openHistory(file, { graceMs = 10 * MIN } = {}) {
       db.exec('BEGIN');
       try {
         for (const slot of Object.values(slots)) {
+          if (!SERIES.includes(slot?.key)) continue; // only the 4 charted series (not store lists)
           const q = slot?.quotes?.[0];
           if (!slot || slot.stale || !q || !slot.ok_at) continue;
           const ts = Date.parse(slot.ok_at);
