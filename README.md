@@ -28,6 +28,8 @@ npm start
 ```
 Then open http://localhost:3000. The first refresh runs at startup and then repeats on the schedule. The page reloads itself every 5 minutes.
 
+**IntelliJ IDEA / WebStorm:** shared run configurations are in [.run/](.run/). Pick **au-watch: start** or **au-watch: test** in the Run/Debug dropdown; Debug works with breakpoints in `src/`. Run `npm install` once first.
+
 ## Test
 ```bash
 npm test
