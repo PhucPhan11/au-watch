@@ -52,11 +52,19 @@ export async function refreshOnce({ cache, http, fetchers = FETCHERS, slots = SL
   return cache.all();
 }
 
-export function startScheduler({ cache, http, intervalMs, log = console.log }) {
+export function startScheduler({ cache, http, intervalMs, history = null, log = console.log }) {
   const tick = async () => {
     const slots = await refreshOnce({ cache, http });
     for (const s of Object.values(slots)) {
       log(`[refresh] ${s.key}: ${s.stale ? `STALE (${s.last_error})` : `ok via ${s.source_used}`}`);
+    }
+    if (history) {
+      try {
+        const { inserted, touched } = history.record(slots);
+        log(`[history] ${inserted} new row(s), ${touched} unchanged`);
+      } catch (err) {
+        log(`[history] write failed: ${err.message}`);
+      }
     }
     await cache.save().catch((err) => log(`[cache] save failed: ${err.message}`));
   };

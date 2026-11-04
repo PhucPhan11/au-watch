@@ -62,6 +62,7 @@ export function renderPage(slots) {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="refresh" content="300">
 <title>Giá vàng VN so với thế giới</title>
+<link rel="stylesheet" href="/assets/uPlot.min.css">
 <style>
   body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; margin: 0 auto; max-width: 860px; padding: 16px; color: #1d1d1f; background: #fff; line-height: 1.4; }
   h1 { font-size: 1.3rem; margin: 0 0 4px; }
@@ -89,6 +90,18 @@ export function renderPage(slots) {
     td[data-label]:not(:first-child)::before { content: attr(data-label); color: #555; text-align: left; }
     .info { grid-template-columns: 1fr; }
   }
+  .history { margin-top: 28px; }
+  .history h2 { font-size: 1.05rem; margin: 0 0 8px; }
+  .history h3 { font-size: .95rem; margin: 20px 0 6px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; justify-content: space-between; }
+  .seg { display: inline-flex; border: 1px solid #ccc; border-radius: 6px; overflow: hidden; }
+  .seg button { font: inherit; font-size: .85rem; border: 0; background: #fff; padding: 6px 12px; cursor: pointer; color: #1d1d1f; }
+  .seg button + button { border-left: 1px solid #ccc; }
+  .seg button[aria-pressed="true"] { background: #1d1d1f; color: #fff; }
+  .chart { min-height: 40px; }
+  .empty { border: 1px dashed #ccc; border-radius: 8px; padding: 24px 12px; text-align: center; color: #666; font-size: .9rem; }
+  .partial { font-size: .8rem; color: #666; margin: 4px 0 0; }
+  .uplot { font-family: inherit; }
+  .u-legend { font-size: .8rem; }
 </style>
 </head>
 <body>
@@ -112,7 +125,25 @@ export function renderPage(slots) {
     <small>Nguồn: ${esc(sourceName(fs))} · Cập nhật: ${time(fs?.ok_at)}</small> ${status(fs)}
   </div>
 </div>
+<section class="history" id="history">
+  <h2>Lịch sử giá</h2>
+  <div class="seg" role="group" aria-label="Khoảng thời gian" id="range">
+    <button type="button" data-range="24h">24 giờ</button><button type="button" data-range="7d">7 ngày</button><button type="button" data-range="30d">30 ngày</button><button type="button" data-range="1y">1 năm</button>
+  </div>
+  <p class="partial" id="partial" hidden></p>
+  <div id="charts">
+    <h3>Giá bán ra so với giá thế giới (đ/lượng)</h3>
+    <div class="chart" id="chart-price"></div>
+    <h3><span>Chênh lệch so với thế giới</span>
+      <span class="seg" role="group" aria-label="Đơn vị chênh lệch" id="gap-mode"><button type="button" data-mode="abs">đồng</button><button type="button" data-mode="pct">%</button></span>
+    </h3>
+    <div class="chart" id="chart-gap"></div>
+  </div>
+  <div class="empty" id="empty" hidden></div>
+</section>
 <p class="note">Chênh lệch = giá bán ra trong nước − giá thế giới quy đổi (giá USD/oz × 1,205653 oz/lượng × tỷ giá). Chưa tính thuế, phí gia công, vận chuyển. Chỉ mang tính tham khảo.</p>
+<script src="/assets/uPlot.iife.min.js"></script>
+<script src="/assets/charts.js"></script>
 </body>
 </html>`;
 }
