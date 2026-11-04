@@ -1,0 +1,14 @@
+{
+  "name": "au-watch",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Giá vàng Việt Nam so với giá vàng thế giới",
+  "type": "module",
+  "engines": {
+    "node": ">=22.9"
+  },
+  "scripts": {
+    "start": "node --env-file-if-exists=.env src/server.js",
+    "test": "node --test"
+  }
+}

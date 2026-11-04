@@ -1,0 +1,118 @@
+// Server-rendered page. Vietnamese labels, readable on mobile.
+import { mid, usdOzToVndLuong, gap } from './convert.js';
+import { FETCHERS } from './scheduler.js';
+
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const vnd = (n) => new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 0 }).format(Math.round(n));
+const usd = (n) => new Intl.NumberFormat('vi-VN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
+const pct = (n) => new Intl.NumberFormat('vi-VN', { minimumFractionDigits: 2, maximumFractionDigits: 2, signDisplay: 'always' }).format(n);
+const time = (iso) => iso
+  ? new Intl.DateTimeFormat('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(iso))
+  : '—';
+
+const VN_ROWS = [
+  { key: 'vn_sjc', label: 'Vàng miếng SJC' },
+  { key: 'vn_pnj_ring', label: 'Nhẫn trơn PNJ 999.9' },
+];
+
+function sourceName(slot) {
+  if (!slot?.source_used) return '—';
+  const name = FETCHERS[slot.source_used]?.source ?? slot.source_used;
+  return slot.primary ? name : `${name} (dự phòng)`;
+}
+
+function status(slot) {
+  if (!slot || slot.quotes.length === 0) return '<span class="badge bad">Chưa có dữ liệu</span>';
+  if (slot.stale) return `<span class="badge bad" title="${esc(slot.last_error ?? '')}">Dữ liệu cũ</span>`;
+  return '<span class="badge ok">Mới</span>';
+}
+
+export function renderPage(slots) {
+  const world = slots.world_xau?.quotes?.[0];
+  const fx = slots.fx_usdvnd?.quotes?.[0];
+  const worldUsd = world ? mid(world) : null;
+  const fxRate = fx ? fx.sell : null;
+  const worldVnd = worldUsd && fxRate ? usdOzToVndLuong(worldUsd, fxRate) : null;
+
+  const rows = VN_ROWS.map(({ key, label }) => {
+    const slot = slots[key];
+    const q = slot?.quotes?.[0];
+    let gapCell = '—';
+    if (q && worldVnd) {
+      const g = gap(q.sell, worldVnd);
+      gapCell = `${g.abs >= 0 ? '+' : ''}${vnd(g.abs)} đ<br><small>${pct(g.pct)}%</small>`;
+    }
+    return `<tr${slot?.stale ? ' class="stale"' : ''}>
+      <td data-label="Sản phẩm"><strong>${esc(label)}</strong><br><small>Nguồn: ${esc(sourceName(slot))}</small></td>
+      <td data-label="Mua vào">${q ? vnd(q.buy) : '—'}</td>
+      <td data-label="Bán ra">${q ? vnd(q.sell) : '—'}</td>
+      <td data-label="Chênh lệch">${gapCell}</td>
+      <td data-label="Cập nhật">${time(slot?.ok_at)}<br>${status(slot)}</td>
+    </tr>`;
+  }).join('');
+
+  const ws = slots.world_xau;
+  const fs = slots.fx_usdvnd;
+  const fxKind = fs?.source_used === 'vcb' ? 'giá bán ra' : 'tham khảo';
+
+  return `<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="refresh" content="300">
+<title>Giá vàng VN so với thế giới</title>
+<style>
+  body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; margin: 0 auto; max-width: 860px; padding: 16px; color: #1d1d1f; background: #fff; line-height: 1.4; }
+  h1 { font-size: 1.3rem; margin: 0 0 4px; }
+  .sub { color: #666; margin: 0 0 16px; font-size: .9rem; }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  th, td { padding: 8px; border-bottom: 1px solid #e5e5e5; text-align: right; vertical-align: top; }
+  th:first-child, td:first-child { text-align: left; }
+  th { font-size: .85rem; color: #555; background: #fafafa; }
+  small { color: #666; }
+  tr.stale td { background: #fff7e6; }
+  .badge { display: inline-block; font-size: .75rem; padding: 1px 6px; border-radius: 4px; }
+  .ok { background: #e6f4ea; color: #1e6b34; }
+  .bad { background: #fde8e8; color: #9b1c1c; }
+  .info { margin-top: 20px; display: grid; gap: 12px; grid-template-columns: 1fr 1fr; }
+  .card { border: 1px solid #e5e5e5; border-radius: 8px; padding: 12px; }
+  .card h2 { font-size: .95rem; margin: 0 0 6px; }
+  .big { font-size: 1.15rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .note { margin-top: 16px; font-size: .8rem; color: #666; }
+  @media (max-width: 480px) {
+    thead { display: none; }
+    table, tbody, tr, td { display: block; width: 100%; box-sizing: border-box; }
+    tr { border: 1px solid #e5e5e5; border-radius: 8px; margin-bottom: 12px; }
+    td { display: flex; justify-content: space-between; gap: 12px; text-align: right; }
+    td:first-child { display: block; text-align: left; }
+    td[data-label]:not(:first-child)::before { content: attr(data-label); color: #555; text-align: left; }
+    .info { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<h1>Giá vàng Việt Nam so với thế giới</h1>
+<p class="sub">Đơn vị: đồng/lượng (1 lượng = 37,5 g). Trang tự tải lại mỗi 5 phút.</p>
+<table>
+  <thead><tr><th>Sản phẩm</th><th>Mua vào</th><th>Bán ra</th><th>Chênh lệch so với thế giới</th><th>Cập nhật</th></tr></thead>
+  <tbody>${rows}</tbody>
+</table>
+<div class="info">
+  <div class="card">
+    <h2>Giá vàng thế giới</h2>
+    <div class="big">${worldUsd ? `${usd(worldUsd)} USD/oz` : '—'}</div>
+    <div>Quy đổi: <strong>${worldVnd ? `${vnd(worldVnd)} đ/lượng` : '—'}</strong></div>
+    <small>Nguồn: ${esc(sourceName(ws))} · Cập nhật: ${time(ws?.ok_at)}</small> ${status(ws)}
+  </div>
+  <div class="card">
+    <h2>Tỷ giá USD/VND</h2>
+    <div class="big">${fxRate ? `${vnd(fxRate)} đ` : '—'}</div>
+    <div>Loại: ${fx ? esc(fxKind) : '—'}</div>
+    <small>Nguồn: ${esc(sourceName(fs))} · Cập nhật: ${time(fs?.ok_at)}</small> ${status(fs)}
+  </div>
+</div>
+<p class="note">Chênh lệch = giá bán ra trong nước − giá thế giới quy đổi (giá USD/oz × 1,205653 oz/lượng × tỷ giá). Chưa tính thuế, phí gia công, vận chuyển. Chỉ mang tính tham khảo.</p>
+</body>
+</html>`;
+}
