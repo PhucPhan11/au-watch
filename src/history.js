@@ -47,8 +47,12 @@ export function openHistory(file, { graceMs = 10 * MIN } = {}) {
   const inRange = db.prepare(`SELECT series, ts, seen_until, buy, sell FROM snapshots
                               WHERE ts <= ? AND seen_until + ? >= ? ORDER BY series, ts, id`);
   const firstTs = db.prepare('SELECT MIN(ts) AS t FROM snapshots');
+  const countRows = db.prepare('SELECT COUNT(*) AS n FROM snapshots');
 
   return {
+    /** Total stored rows (for /health). */
+    count() { return countRows.get().n; },
+
     /** Save fresh slots. Stale/failed slots are skipped. Returns counts. */
     record(slots) {
       let inserted = 0;

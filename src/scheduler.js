@@ -19,11 +19,22 @@ export const SLOTS = [
   { key: 'fx_usdvnd', sources: [{ fetcher: 'vcb', pick: first }, { fetcher: 'erapi', pick: first }] },
 ];
 
-export async function refreshOnce({ cache, http, fetchers = FETCHERS, slots = SLOTS, now = () => new Date() }) {
+export async function refreshOnce({ cache, http, fetchers = FETCHERS, slots = SLOTS, now = () => new Date(), onFetch = null }) {
   // Each source is requested at most once per cycle, even if several slots use it.
   const calls = new Map();
+  const report = (event) => {
+    try { onFetch?.(event); } catch { /* observers must not break a refresh */ }
+  };
   const call = (fid) => {
-    if (!calls.has(fid)) calls.set(fid, fetchers[fid].fetch(http));
+    if (!calls.has(fid)) {
+      const started = Date.now();
+      const p = Promise.resolve().then(() => fetchers[fid].fetch(http));
+      p.then(
+        () => report({ source: fid, ok: true, duration_ms: Date.now() - started }),
+        (err) => report({ source: fid, ok: false, duration_ms: Date.now() - started, error: err.message }),
+      );
+      calls.set(fid, p);
+    }
     return calls.get(fid);
   };
 
@@ -52,21 +63,34 @@ export async function refreshOnce({ cache, http, fetchers = FETCHERS, slots = SL
   return cache.all();
 }
 
-export function startScheduler({ cache, http, intervalMs, history = null, log = console.log }) {
+/** One JSON object per line on stdout (errors on stderr). */
+export function logEvent(level, event, fields = {}) {
+  const line = JSON.stringify({ ts: new Date().toISOString(), level, event, ...fields });
+  (level === 'error' ? console.error : console.log)(line);
+}
+
+export function startScheduler({ cache, http, intervalMs, history = null, status = null, log = logEvent }) {
+  const onFetch = (e) => {
+    status?.recordFetch(e);
+    log(e.ok ? 'info' : 'error', 'fetch', e);
+  };
   const tick = async () => {
-    const slots = await refreshOnce({ cache, http });
+    const slots = await refreshOnce({ cache, http, onFetch });
     for (const s of Object.values(slots)) {
-      log(`[refresh] ${s.key}: ${s.stale ? `STALE (${s.last_error})` : `ok via ${s.source_used}`}`);
+      log(s.stale ? 'error' : 'info', 'slot', {
+        slot: s.key, stale: s.stale, source_used: s.source_used, ...(s.stale ? { error: s.last_error } : {}),
+      });
     }
     if (history) {
       try {
         const { inserted, touched } = history.record(slots);
-        log(`[history] ${inserted} new row(s), ${touched} unchanged`);
+        status?.recordHistoryWrite();
+        log('info', 'history', { inserted, unchanged: touched });
       } catch (err) {
-        log(`[history] write failed: ${err.message}`);
+        log('error', 'history', { error: err.message });
       }
     }
-    await cache.save().catch((err) => log(`[cache] save failed: ${err.message}`));
+    await cache.save().catch((err) => log('error', 'cache', { error: err.message }));
   };
   tick();
   return setInterval(tick, intervalMs);

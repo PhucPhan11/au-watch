@@ -1,0 +1,5 @@
+# SITE_ADDRESS: e.g. 140-238-1-2.sslip.io (HTTPS, certificate obtained automatically) or :80 (plain HTTP, local).
+{$SITE_ADDRESS} {
+	encode gzip
+	reverse_proxy app:3000
+}
