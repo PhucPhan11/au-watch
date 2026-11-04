@@ -2,7 +2,7 @@
 
 au-watch is a small web page that shows Vietnamese gold buy/sell prices next to the world spot price converted to VND per lượng. Each Vietnamese row also shows the **gap** (chênh lệch) between the two.
 
-It is a data layer and one server-rendered page. Phase 2 added price history (SQLite) and charts; Phase 3 added Docker deployment (see [Deployment](#deployment)). The only npm dependency is the chart library [uPlot](https://github.com/leeoniya/uPlot) (1.6.32).
+It is a data layer and one server-rendered page. Phase 2 added price history (SQLite) and charts. The only npm dependency is the chart library [uPlot](https://github.com/leeoniya/uPlot) (1.6.32).
 
 ## Requirements
 - Node.js **22.13 or newer** (tested on 26.5). It provides built-in `fetch`, `node:sqlite`, `node:test` and `--env-file-if-exists`.
@@ -19,8 +19,7 @@ No API keys are needed. If keys are ever added, they belong in `.env`, which git
 | `PORT` | `3000` | HTTP port |
 | `REFRESH_MINUTES` | `10` | Minutes between refreshes. Values below 5 are raised to 5. |
 | `USER_AGENT` | `au-watch/0.1` | User-Agent sent to sources |
-| `DATA_DIR` | `./data` (`/data` in Docker) | Where `cache.json`, `history.db` and `scheduler.lock` live |
-| `SITE_ADDRESS` | `:80` | Docker/Caddy only: public hostname for automatic HTTPS (e.g. `140-238-1-2.sslip.io`) |
+| `DATA_DIR` | `./data` | Where `cache.json`, `history.db` and `scheduler.lock` live |
 | `PNJ_URL`, `GOLDAPI_URL`, `SWISSQUOTE_URL`, `VCB_URL`, `ERAPI_URL` | real endpoints | Override a source URL, for example to simulate an outage |
 
 ## Run
@@ -95,7 +94,7 @@ Stop the app, then delete the database files:
 ```bash
 rm data/history.db data/history.db-wal data/history.db-shm
 ```
-The app creates an empty database on the next start. `data/cache.json`, which holds the latest values for the price table, is a separate file. For a Docker deployment, see [Reset](#reset) under Deployment.
+The app creates an empty database on the next start. `data/cache.json`, which holds the latest values for the price table, is a separate file.
 
 ### Health check
 `GET /health` always returns HTTP 200 while the process is running, even when a price source is down.
@@ -117,106 +116,27 @@ At startup the process takes an exclusive lock on `DATA_DIR/scheduler.lock`. The
 - A second process using the same data directory serves pages but runs no scheduler and writes no history. It logs `scheduler: standby`.
 - `history.db` itself isn't used for locking.
 
-## Deployment
+## GitHub Pages
 
-Production runs on an **Oracle Cloud Always Free** VM:
-- **VM:** Ampere A1, arm64, Ubuntu 24.04, Singapore home region.
-- **Containers:** Docker Compose runs two of them.
-  - **app** ([Dockerfile](Dockerfile), `node:24.22.2-slim`): exactly one instance. Its data lives on the named volume `au-watch-data` (`/data`).
-  - **caddy** (`caddy:2.11.6`, [Caddyfile](Caddyfile)): serves HTTPS on ports 80 and 443, with a certificate it obtains automatically for `SITE_ADDRESS`.
-- **Public URL:** `https://<public-ip-with-dashes>.sslip.io`. [sslip.io](https://sslip.io) is a free wildcard DNS name that resolves to the IP inside the name, so no custom domain is needed.
-- **Settings:** all come from `.env` next to `compose.yaml` (see `.env.example`). No secrets are needed.
+A static version of the page is published to GitHub Pages at **https://phucphan11.github.io/au-watch/**.
 
-**Oracle idle reclamation.** Oracle may reclaim Always Free VMs that stay idle for 7 days: 95th-percentile CPU, network and memory all below 20%. This app is nearly idle.
-- Upgrading the tenancy to **Pay As You Go** stops reclamation. Usage within Always Free limits still costs $0, but a card is required.
-- Otherwise, keep the daily backup below and copy it off the VM.
+- **How it works.** GitHub Pages can't run Node, the scheduler or SQLite. Instead, the visitor's browser fetches current prices straight from PNJ, gold-api.com, Vietcombank and ExchangeRate-API when the page opens, and again every 5 minutes. It reuses the app's own fetchers, conversion and page rendering ([pages/](pages/)).
+- **No history.** The charts only exist in the local app (`npm start`).
+- **No Swissquote backup.** Swissquote doesn't allow browser requests (no CORS header). If gold-api.com is down, the world row shows "Chưa có dữ liệu".
+- **No stale values.** The browser doesn't remember anything between visits, so a failed source shows "Chưa có dữ liệu" rather than its last known value.
+- **Load on the sources.** Every visitor's browser calls the sources directly. That's fine for personal or light use.
 
-### Run the production stack locally
+### Publishing
+[.github/workflows/pages.yml](.github/workflows/pages.yml) builds and deploys the site on every push to `main` (and can be run by hand from the Actions tab). It copies `pages/` and the browser-safe modules from `src/` into `_site/`.
+
+One-time setup: on GitHub, open **Settings → Pages → Build and deployment → Source** and choose **GitHub Actions**.
+
+### Preview locally
 ```bash
-docker compose up -d --build        # SITE_ADDRESS defaults to :80 → http://localhost
-docker compose ps                   # app should become "healthy"
-curl http://localhost/health
-docker compose down                 # stops containers; volumes (history) are kept
+mkdir -p _site/src && cp pages/* _site/ && cp -r src/convert.js src/render.js src/scheduler.js src/fetchers _site/src/
+python -m http.server 8080 --directory _site     # then open http://localhost:8080
 ```
-
-### First deploy (one time)
-1. **Oracle account:** sign up at cloud.oracle.com and choose **Singapore** as the home region; Always Free resources only exist there. Optionally upgrade to Pay As You Go (see above).
-2. **Create the VM** (Compute → Instances → Create instance):
-   - **Image:** Canonical Ubuntu 24.04.
-   - **Shape:** Ampere `VM.Standard.A1.Flex`, 1 OCPU / 6 GB, which stays within the free 2 OCPU / 12 GB.
-   - **Networking:** a public subnet, with "Assign a public IPv4 address" on.
-   - **SSH:** add your SSH public key.
-   - If Oracle reports "Out of capacity", retry later or pick another availability domain.
-3. **Open ports in the VCN:** Networking → Virtual cloud networks → *your VCN* → Security lists → Default → Add ingress rules for source `0.0.0.0/0`:
-   - TCP destination port 80
-   - TCP destination port 443
-   - UDP destination port 443 (optional, for HTTP/3)
-4. **On the VM** (`ssh ubuntu@<public-ip>`):
-   ```bash
-   # Oracle's Ubuntu image also blocks inbound ports with iptables: open 80/443 and persist the rules.
-   sudo iptables -I INPUT 5 -p tcp -m multiport --dports 80,443 -m state --state NEW -j ACCEPT
-   sudo iptables -I INPUT 5 -p udp --dport 443 -j ACCEPT
-   sudo netfilter-persistent save
-
-   # Docker Engine from Docker's official apt repository
-   sudo apt-get update && sudo apt-get install -y ca-certificates curl git
-   sudo install -m 0755 -d /etc/apt/keyrings
-   sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
-   echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list
-   sudo apt-get update && sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-   sudo usermod -aG docker ubuntu && exit       # log in again so the group applies
-   ```
-   Then log in again and run:
-   ```bash
-   git clone https://github.com/PhucPhan11/au-watch.git ~/au-watch && cd ~/au-watch
-   cp .env.example .env
-   sed -i "s/^SITE_ADDRESS=.*/SITE_ADDRESS=$(curl -s https://ifconfig.me | tr . -).sslip.io/" .env
-   grep SITE_ADDRESS .env                       # e.g. SITE_ADDRESS=140-238-1-2.sslip.io
-   docker compose up -d --build
-   docker compose ps                            # app "healthy", caddy "Up"
-   ```
-   Within a minute Caddy obtains the certificate and the site is live at `https://<SITE_ADDRESS>/`.
-
-### Redeploy
-```bash
-cd ~/au-watch && git pull && docker compose up -d --build
-```
-History is kept because it lives on the `au-watch-data` volume, not in the image. On SIGTERM the old container stops its scheduler, closes the database cleanly and releases the lock before the new one starts.
-
-### Logs and health
-```bash
-docker compose logs -f app                                  # JSON lines
-docker compose logs app | grep '"level":"error"'            # failures only, with reasons
-docker compose logs caddy                                   # HTTPS / certificate issues
-curl -s https://<SITE_ADDRESS>/health
-```
-Docker keeps up to 5 × 10 MB of app logs (`compose.yaml`).
-
-### Backup
-Make a consistent copy of the live database with `VACUUM INTO`, move it out of the volume, and keep the last 7. Install on the VM with `crontab -e`, as one line:
-```
-0 3 * * * cd ~/au-watch && mkdir -p ~/au-watch-backups && f=backup-$(date +\%F).db && docker compose exec -T app node -e "new (require('node:sqlite').DatabaseSync)('/data/history.db').exec(\"VACUUM INTO '/data/$f'\")" && docker compose cp app:/data/$f ~/au-watch-backups/ && docker compose exec -T app rm /data/$f && find ~/au-watch-backups -name 'backup-*.db' -mtime +7 -delete
-```
-To copy the backups to your own machine:
-```bash
-scp 'ubuntu@<public-ip>:~/au-watch-backups/*.db' .
-```
-Oracle boot-volume backups (5 are free) are a second layer, but they are not a replacement for copies kept off the VM.
-
-### Restore
-```bash
-cd ~/au-watch
-docker compose stop app
-docker compose run --rm --no-deps --user root -v ~/au-watch-backups:/backups:ro app \
-  sh -c "cp /backups/backup-YYYY-MM-DD.db /data/history.db && rm -f /data/history.db-wal /data/history.db-shm && chown node:node /data/history.db"
-docker compose start app
-```
-
-### Reset
-This **deletes all recorded history**:
-```bash
-docker compose down && docker volume rm au-watch_au-watch-data && docker compose up -d
-```
+`_site/` is git-ignored.
 
 ## Known limitations
 - **DOJI is not included.** There is no public feed. giavang.doji.vn redirects to a login-gated internal app, and the old XML endpoint returns 404.

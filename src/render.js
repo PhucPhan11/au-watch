@@ -27,7 +27,29 @@ function status(slot) {
   return '<span class="badge ok">Mới</span>';
 }
 
-export function renderPage(slots) {
+const HISTORY_HEAD = '<link rel="stylesheet" href="/assets/uPlot.min.css">\n';
+const HISTORY_SECTION = `<section class="history" id="history">
+  <h2>Lịch sử giá</h2>
+  <div class="seg" role="group" aria-label="Khoảng thời gian" id="range">
+    <button type="button" data-range="24h">24 giờ</button><button type="button" data-range="7d">7 ngày</button><button type="button" data-range="30d">30 ngày</button><button type="button" data-range="1y">1 năm</button>
+  </div>
+  <p class="partial" id="partial" hidden></p>
+  <div id="charts">
+    <h3>Giá bán ra so với giá thế giới (đ/lượng)</h3>
+    <div class="chart" id="chart-price"></div>
+    <h3><span>Chênh lệch so với thế giới</span>
+      <span class="seg" role="group" aria-label="Đơn vị chênh lệch" id="gap-mode"><button type="button" data-mode="abs">đồng</button><button type="button" data-mode="pct">%</button></span>
+    </h3>
+    <div class="chart" id="chart-gap"></div>
+  </div>
+  <div class="empty" id="empty" hidden></div>
+</section>
+`;
+const HISTORY_SCRIPTS = '<script src="/assets/uPlot.iife.min.js"></script>\n<script src="/assets/charts.js"></script>\n';
+const NO_HISTORY_NOTE = '<p class="note">Biểu đồ lịch sử chỉ có khi chạy ứng dụng trên máy (npm start).</p>\n';
+
+/** withHistory: false → no chart section or chart assets (static GitHub Pages build). */
+export function renderPage(slots, { withHistory = true } = {}) {
   const world = slots.world_xau?.quotes?.[0];
   const fx = slots.fx_usdvnd?.quotes?.[0];
   const worldUsd = world ? mid(world) : null;
@@ -62,8 +84,7 @@ export function renderPage(slots) {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="refresh" content="300">
 <title>Giá vàng VN so với thế giới</title>
-<link rel="stylesheet" href="/assets/uPlot.min.css">
-<style>
+${withHistory ? HISTORY_HEAD : ''}<style>
   body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; margin: 0 auto; max-width: 860px; padding: 16px; color: #1d1d1f; background: #fff; line-height: 1.4; }
   h1 { font-size: 1.3rem; margin: 0 0 4px; }
   .sub { color: #666; margin: 0 0 16px; font-size: .9rem; }
@@ -125,25 +146,7 @@ export function renderPage(slots) {
     <small>Nguồn: ${esc(sourceName(fs))} · Cập nhật: ${time(fs?.ok_at)}</small> ${status(fs)}
   </div>
 </div>
-<section class="history" id="history">
-  <h2>Lịch sử giá</h2>
-  <div class="seg" role="group" aria-label="Khoảng thời gian" id="range">
-    <button type="button" data-range="24h">24 giờ</button><button type="button" data-range="7d">7 ngày</button><button type="button" data-range="30d">30 ngày</button><button type="button" data-range="1y">1 năm</button>
-  </div>
-  <p class="partial" id="partial" hidden></p>
-  <div id="charts">
-    <h3>Giá bán ra so với giá thế giới (đ/lượng)</h3>
-    <div class="chart" id="chart-price"></div>
-    <h3><span>Chênh lệch so với thế giới</span>
-      <span class="seg" role="group" aria-label="Đơn vị chênh lệch" id="gap-mode"><button type="button" data-mode="abs">đồng</button><button type="button" data-mode="pct">%</button></span>
-    </h3>
-    <div class="chart" id="chart-gap"></div>
-  </div>
-  <div class="empty" id="empty" hidden></div>
-</section>
-<p class="note">Chênh lệch = giá bán ra trong nước − giá thế giới quy đổi (giá USD/oz × 1,205653 oz/lượng × tỷ giá). Chưa tính thuế, phí gia công, vận chuyển. Chỉ mang tính tham khảo.</p>
-<script src="/assets/uPlot.iife.min.js"></script>
-<script src="/assets/charts.js"></script>
-</body>
+${withHistory ? HISTORY_SECTION : NO_HISTORY_NOTE}<p class="note">Chênh lệch = giá bán ra trong nước − giá thế giới quy đổi (giá USD/oz × 1,205653 oz/lượng × tỷ giá). Chưa tính thuế, phí gia công, vận chuyển. Chỉ mang tính tham khảo.</p>
+${withHistory ? HISTORY_SCRIPTS : ''}</body>
 </html>`;
 }
