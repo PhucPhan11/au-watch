@@ -28,6 +28,8 @@ export const SERIES_FROM = {
   fx_usdvnd: { slot: 'fx_usdvnd' },
   fx_chfvnd: { slot: 'fx_rates', code: 'CHFVND' },
   fx_jpyvnd: { slot: 'fx_rates', code: 'JPYVND' },
+  vn_silver: { slot: 'vn_silver_pq', code: 'PQ_1L' },
+  world_xag: { slot: 'world_xag' },
 };
 const SERIES = Object.keys(SERIES_FROM);
 
@@ -96,7 +98,7 @@ export function openHistory(file, { graceMs = 10 * MIN } = {}) {
         for (const [series, from] of Object.entries(SERIES_FROM)) {
           const slot = slots[from.slot];
           const q = from.code ? slot?.quotes?.find((x) => x.code === from.code) : slot?.quotes?.[0];
-          if (!slot || slot.stale || !q || !slot.ok_at) continue;
+          if (!slot || slot.stale || !q || !slot.ok_at || q.buy == null || q.sell == null) continue;
           const ts = Date.parse(slot.ok_at);
           const last = latest.get(series);
           // Never extend a seed row: it would be dropped when a newer seed is imported.
@@ -201,8 +203,10 @@ export function bucketize(rows, { from, to, bucketMs, graceMs }) {
     sjc_buy: [], sjc_sell: [], ring_sell: [], world_vnd_luong: [],
     gap_sjc_abs: [], gap_sjc_pct: [], gap_ring_abs: [], gap_ring_pct: [],
     usd_buy: [], usd_sell: [], chf_buy: [], chf_sell: [], jpy_buy: [], jpy_sell: [],
+    silver_buy: [], silver_sell: [], world_xag_vnd_luong: [], gap_silver_abs: [], gap_silver_pct: [],
   };
   let fxComplete = 0;
+  let silverComplete = 0;
   let complete = 0;
   for (let i = 0; i < n; i++) {
     const sjc = pick.vn_sjc[i];
@@ -229,8 +233,19 @@ export function bucketize(rows, { from, to, bucketMs, graceMs }) {
       if (r) anyFx = true;
     }
     if (anyFx) fxComplete++;
+    const ag = pick.vn_silver[i];
+    const xag = pick.world_xag[i];
+    const agWorld = xag && fx ? usdOzToVndLuong(mid(xag), fx.sell) : null;
+    const ga = ag && agWorld ? gap(ag.sell, agWorld) : null;
+    out.silver_buy.push(ag ? ag.buy : null);
+    out.silver_sell.push(ag ? ag.sell : null);
+    out.world_xag_vnd_luong.push(agWorld);
+    out.gap_silver_abs.push(ga ? ga.abs : null);
+    out.gap_silver_pct.push(ga ? ga.pct : null);
+    if (ag || agWorld) silverComplete++;
   }
   out.enough = complete >= 2;
   out.fx_enough = fxComplete >= 2;
+  out.silver_enough = silverComplete >= 2;
   return out;
 }

@@ -50,6 +50,20 @@ The exchange-rate table isn't part of `/health` and doesn't affect the gap, whic
 
 Each source is requested at most once per refresh (both Vietnamese rows share one PNJ request, and the USD row and the exchange-rate table share one Vietcombank request), with a 10 s timeout and no retry loop. The page shows "(dự phòng)" whenever a fallback source supplied a value.
 
+### Giá bạc (silver)
+The local app also shows silver, laid out like gold:
+
+| Data | Primary | Fallback |
+|---|---|---|
+| Vietnamese silver: every product in Phú Quý's table (Hà Nội), including "Bạc miếng Phú Quý 999 1 lượng" | `giabac.phuquygroup.vn/PhuQuyPrice/SilverPricePartial`, the HTML table their own page loads, plus `GetDateTimeUpdate` for the store's update time | — |
+| World XAG/USD | `api.gold-api.com/price/XAG` | Swissquote XAG/USD bid/ask feed |
+
+- **Units.** Prices are in đ/lượng, and one Phú Quý row is in đ/kg. A range check (200k–20M đ/lượng, scaled for the kg row) catches a switch to per-chỉ or per-gram quoting.
+- **The gap** uses the same formula as gold: the USD/oz price × 1.205653 oz/lượng × the USD sell rate. It's shown only for 999 rows priced per lượng.
+- **VAT.** Phú Quý's prices include VAT (GTGT), so the silver gap includes about 10% VAT plus import duty and fees. The page says so.
+- **Health.** The silver slots are recorded in history but aren't part of `/health`, so a Phú Quý outage doesn't mark the app degraded.
+- **GitHub Pages.** Phú Quý sends no CORS headers, so the silver section only exists in the local app. The Pages build shows a note instead.
+
 ### Giá vàng tại Cần Thơ
 The local app also shows every gold type listed by three Cần Thơ stores, one table per store:
 
@@ -78,7 +92,7 @@ gap_%           = gap / world_vnd_luong × 100
 If a source and its fallback both fail, that row keeps its last known value. It gets a **"Dữ liệu cũ"** badge, a highlighted background, and the time of the last successful update. The other rows are not affected. Last values are saved to `data/cache.json`, which git ignores, so they also survive a restart.
 
 ## Price history
-Every scheduled refresh records into `data/history.db`, a SQLite database through Node's built-in `node:sqlite`. History survives restarts. Six series are stored: `vn_sjc`, `vn_pnj_ring`, `world_xau`, `fx_usdvnd`, and `fx_chfvnd` / `fx_jpyvnd`, which are taken from the exchange-rate table's CHF and JPY rows. Exchange rates store the transfer buy and sell rates.
+Every scheduled refresh records into `data/history.db`, a SQLite database through Node's built-in `node:sqlite`. History survives restarts. Eight series are stored: `vn_sjc`, `vn_pnj_ring`, `world_xau`, `fx_usdvnd`, `fx_chfvnd` / `fx_jpyvnd` (taken from the exchange-rate table's CHF and JPY rows), `vn_silver` (Phú Quý's 1-lượng bar), and `world_xag`. Exchange rates store the transfer buy and sell rates.
 
 ```sql
 snapshots(id, series, source, product, ts, seen_until, buy, sell, unit, currency)
@@ -101,14 +115,17 @@ snapshots(id, series, source, product, ts, seen_until, buy, sell, unit, currency
 | 5y | 1 day | 1825 |
 
 Each bucket holds the latest value seen in it. A bucket with no data is `null`. The response uses column arrays:
-`t` (bucket end, epoch ms), `sjc_buy`, `sjc_sell`, `ring_sell`, `world_vnd_luong`, `gap_sjc_abs`, `gap_sjc_pct`, `gap_ring_abs`, `gap_ring_pct`, and the exchange rates `usd_buy`, `usd_sell`, `chf_buy`, `chf_sell`, `jpy_buy`, `jpy_sell` (đồng per 1 unit).
-It also includes `range`, `bucket_ms`, `from`, `to`, `first_recorded` `enough`, which is `true` when at least 2 buckets have a gap value, and `fx_enough`, which is `true` when at least 2 buckets have an exchange rate.
+`t` (bucket end, epoch ms), `sjc_buy`, `sjc_sell`, `ring_sell`, `world_vnd_luong`, `gap_sjc_abs`, `gap_sjc_pct`, `gap_ring_abs`, `gap_ring_pct`, the exchange rates `usd_buy`, `usd_sell`, `chf_buy`, `chf_sell`, `jpy_buy`, `jpy_sell` (đồng per 1 unit), and silver: `silver_buy`, `silver_sell`, `world_xag_vnd_luong`, `gap_silver_abs`, `gap_silver_pct`.
+It also includes `range`, `bucket_ms`, `from`, `to`, `first_recorded` `enough`, which is `true` when at least 2 buckets have a gap value, `fx_enough`, which is `true` when at least 2 buckets have an exchange rate, and `silver_enough`, which is `true` when at least 2 buckets have the world silver line or the Phú Quý price.
 
 ### Charts
 Below the price table are two charts, each with a range selector (24 giờ / 7 ngày / 30 ngày / 1 năm / 5 năm):
 - **Price chart:** sell prices, with a band showing the SJC buy/sell spread, plus the converted world price.
 - **Gap chart:** the gap over time, with a toggle between đồng and %.
 - **Exchange-rate chart:** transfer buy and sell, with the spread as a band, and a USD / CHF / JPY switch (kept in the URL as `?fx=`). It has its **own range buttons** (24 giờ / 7 ngày / 30 ngày / 1 năm / 5 năm, kept as `?fxrange=`), independent of the gold charts' range. When both charts use the same range, they share one `/api/history` request. The chart is drawn whenever `fx_enough` is true for its range, even if the gold charts don't have enough data yet.
+- **Silver ("Lịch sử giá bạc"):** its own range buttons (`?agrange=`).
+  - **Price chart:** Phú Quý's 1-lượng bar as a buy/sell band, plus the converted world silver line.
+  - **Gap chart:** has a đồng/% toggle (`?aggap=`). Until there are at least 2 Phú Quý points in the range, the gap chart is replaced by a note. Phú Quý has no history, so domestic silver is recorded only from the time the app runs.
 
 If there isn't enough history for the selected range, the page says so instead of drawing a chart.
 
@@ -120,12 +137,13 @@ rm data/history.db data/history.db-wal data/history.db-shm
 On the next start the app creates a new database and imports the committed backfill seed into it (see below). `data/cache.json`, which holds the latest values for the price table, is a separate file.
 
 ### Backfill (past prices)
-`npm run backfill` fetches past prices for the six charted series and saves them to **`seed/history.json.gz`**. This file is committed. The script then imports the seed into `data/history.db`. When the server starts, the process holding the scheduler lock imports the seed too, so a fresh clone has history without fetching anything. A seed is imported only once; the `meta` table records its `generated_at`.
+`npm run backfill` fetches past prices for the charted series (Phú Quý silver has no history source and is recorded only live) and saves them to **`seed/history.json.gz`**. This file is committed. The script then imports the seed into `data/history.db`. When the server starts, the process holding the scheduler lock imports the seed too, so a fresh clone has history without fetching anything. A seed is imported only once; the `meta` table records its `generated_at`.
 
 | Series | Source | Resolution |
 |---|---|---|
 | SJC bar, PNJ ring | PNJ change log (`get-gold-price-history?zone=00&date=YYYYMMDD`, Hồ Chí Minh zone), one request per day | Every intraday price change, about 5 years back |
 | World gold (USD/oz) | Yahoo Finance `GC=F` | 5m for the last 7 days, 15m to 60 days, 1h to 1 year, 1 day to 5 years |
+| World silver (USD/oz) | Yahoo Finance `SI=F` (COMEX silver futures) | Same as world gold |
 | USD/VND | Yahoo Finance `USDVND=X`, scaled to Vietcombank | Same as world gold |
 | CHF/VND, JPY/VND | Yahoo Finance `CHFVND=X` / `JPYVND=X`, scaled to Vietcombank. For 5 years, the cross rate `USDVND=X ÷ CHF=X` (`÷ JPY=X`), because the direct pairs return only one daily point | Same as world gold |
 
@@ -134,6 +152,7 @@ On the next start the app creates a new database and imports the committed backf
 - **World gold is the COMEX futures price (`GC=F`), not spot.** The two are usually within a few USD/oz. gold-api.com, the live source, has no free history API.
 - **Exchange rates are scaled.** Yahoo gives one mid-market rate; for USD it is about 0.8% below Vietcombank's sell rate. Each currency's buy is multiplied by `VCB transfer ÷ Yahoo latest` and its sell by `VCB sell ÷ Yahoo latest` (stored as `fx_ratios` in the seed). Backfilled rates therefore carry Vietcombank's spread, and backfilled gaps line up with live ones. This assumes the spread was constant over time. Vietcombank's own history (`?date=`) can't be used for 5 years because of its rate limit of one request per 5 minutes.
 - **Cần Thơ stores are not backfilled.** They have no history and aren't charted.
+- **Phú Quý silver is not backfilled.** It has no history endpoint (probed). Its price and the silver gap start when the app starts recording. Only the world silver line goes back 5 years.
 
 Rerun `npm run backfill` to refresh the seed, then commit `seed/history.json.gz`.
 
@@ -180,6 +199,7 @@ python -m http.server 8080 --directory _site     # then open http://localhost:80
 `_site/` is git-ignored.
 
 ## Known limitations
+- **Silver comes from a single Vietnamese source (Phú Quý, Hà Nội)**, read from the HTML table its own page loads. If the markup changes, the silver table goes stale and the log shows the parse error. There is no domestic silver history before the app started recording.
 - **DOJI is not included.** There is no public feed. giavang.doji.vn redirects to a login-gated internal app, and the old XML endpoint returns 404.
 - **sjc.com.vn is not used.** The SJC bar price shown is PNJ's price for SJC bars, which can differ from SJC's own quote. sjc.com.vn's robots.txt blocks AI agents, so no SJC fetcher was built and verified in Phase 1.
 - **PNJ is a single point of failure for both Vietnamese rows.** If PNJ is down, both rows show their last known values marked "Dữ liệu cũ".

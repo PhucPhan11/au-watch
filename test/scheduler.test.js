@@ -9,6 +9,8 @@ import * as goldapi from '../src/fetchers/goldapi.js';
 import * as swissquote from '../src/fetchers/swissquote.js';
 import * as vcb from '../src/fetchers/vcb.js';
 import * as erapi from '../src/fetchers/erapi.js';
+import * as phuquy from '../src/fetchers/phuquy.js';
+import { healthReport, createStatus } from '../src/app.js';
 
 const fixture = (name) => JSON.parse(readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8'));
 
@@ -28,6 +30,16 @@ function fakeFetchers(down = new Set(), counts = {}) {
     swissquote: make(swissquote, 'swissquote'),
     vcb: make(vcb, 'vcb'),
     erapi: make(erapi, 'erapi'),
+    goldapi_xag: make(goldapi.xag, 'goldapi-xag'),
+    swissquote_xag: make(swissquote.xag, 'swissquote-xag'),
+    phuquy: {
+      source: phuquy.source,
+      fetch: async () => {
+        counts.phuquy = (counts.phuquy ?? 0) + 1;
+        if (down.has('phuquy')) throw new Error('connect ECONNREFUSED');
+        return phuquy.parse(readFileSync(new URL('./fixtures/phuquy.html', import.meta.url), 'utf8'));
+      },
+    },
   };
 }
 
@@ -100,4 +112,26 @@ test('source dead with no previous value → empty stale slot, page still render
   assert.equal(slots.world_xau.stale, true);
   assert.deepEqual(slots.world_xau.quotes, []);
   assert.match(renderPage(slots), /Chưa có dữ liệu/);
+});
+
+test('silver: world XAG from gold-api, Swissquote fallback; Phú Quý table', async () => {
+  const slots = await refreshOnce({ cache: createCache(null), http: null, fetchers: fakeFetchers() });
+  assert.equal(slots.world_xag.source_used, 'goldapi_xag');
+  assert.equal(slots.world_xag.quotes[0].code, 'XAG');
+  assert.equal(slots.vn_silver_pq.quotes.length, 5);
+  const fb = await refreshOnce({ cache: createCache(null), http: null, fetchers: fakeFetchers(new Set(['goldapi-xag'])) });
+  assert.equal(fb.world_xag.source_used, 'swissquote_xag');
+  assert.equal(fb.world_xag.primary, false);
+});
+
+test('silver: Phú Quý down → its slot is stale, but /health stays ok and gold is unaffected', async () => {
+  const cache = createCache(null);
+  await refreshOnce({ cache, http: null, fetchers: fakeFetchers(new Set(['phuquy'])) });
+  assert.equal(cache.get('vn_silver_pq').stale, true);
+  assert.equal(cache.get('vn_sjc').stale, false);
+  const status = createStatus();
+  status.scheduler = 'running';
+  const report = healthReport({ cache, history: { count: () => 0 }, status });
+  assert.equal(report.status, 'ok');
+  assert.equal(report.slots.vn_silver_pq.stale, true);
 });

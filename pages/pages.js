@@ -30,7 +30,7 @@ async function main() {
     slots: [...CORE_SLOTS, ...FX_SLOTS],
     onFetch: (e) => { if (!e.ok) console.warn(`[au-watch] ${e.source}: ${e.error}`); },
   });
-  const doc = new DOMParser().parseFromString(renderPage(cache.all(), { withHistory: false, withStores: false }), 'text/html');
+  const doc = new DOMParser().parseFromString(renderPage(cache.all(), { withHistory: false, withStores: false, withSilver: false }), 'text/html');
   document.head.replaceWith(doc.head);
   document.body.replaceWith(doc.body);
 }

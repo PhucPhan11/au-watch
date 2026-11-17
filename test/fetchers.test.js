@@ -10,7 +10,8 @@ import * as erapi from '../src/fetchers/erapi.js';
 import * as ngoctham from '../src/fetchers/ngoctham.js';
 import * as minhvu from '../src/fetchers/minhvu.js';
 import * as huythanh from '../src/fetchers/huythanh.js';
-import { isPure, vndPerChiToLuong } from '../src/fetchers/util.js';
+import * as phuquy from '../src/fetchers/phuquy.js';
+import { isPure, vndPerChiToLuong, htmlText } from '../src/fetchers/util.js';
 
 const fixturePath = (name) => new URL(`./fixtures/${name}`, import.meta.url);
 const fixture = (name) => JSON.parse(readFileSync(fixturePath(name), 'utf8'));
@@ -173,4 +174,47 @@ test('fetch() goes through the injected http function (no network)', async () =>
   const quotes = await pnj.fetch(http);
   assert.ok(quotes.length > 0);
   assert.match(seen[0][0], /edge-api\.pnj\.io/);
+});
+
+// --- Silver ---
+
+test('gold-api / Swissquote XAG: silver modules share the parser with their own symbol and range', () => {
+  const [g] = goldapi.xag.parse(fixture('goldapi-xag.json'), T);
+  assertShape(g);
+  assert.deepEqual([g.code, g.unit, g.buy], ['XAG', 'oz', 47.490002]);
+  assert.throws(() => goldapi.xag.parse(fixture('goldapi.json')), /unexpected/); // XAU payload rejected
+  assert.throws(() => goldapi.xag.parse({ symbol: 'XAG', currency: 'USD', price: 4000 }), /range/);
+  const [s] = swissquote.xag.parse(fixture('swissquote-xag.json'), T);
+  assert.equal(s.code, 'XAG');
+  assert.ok(s.buy > 1 && s.buy < 1000 && s.sell >= s.buy);
+  assert.equal(goldapi.id, 'goldapi'); // XAU module exports unchanged
+  assert.equal(goldapi.xag.id, 'goldapi_xag');
+});
+
+test('Phú Quý: silver table rows, units, groups, update time', () => {
+  const quotes = phuquy.parse(fixtureText('phuquy.html'), T, fixture('phuquy-time.json'));
+  quotes.forEach(assertShape);
+  assert.equal(quotes.length, 5);
+  const bar = quotes.find((q) => q.code === 'PQ_1L');
+  assert.deepEqual([bar.product, bar.unit, bar.buy, bar.sell, bar.pure],
+    ['Bạc Miếng Phú Quý 999 1 Lượng', 'luong', 1_458_000, 1_503_000, true]);
+  assert.equal(bar.group, 'Bạc Thương Hiệu Phú Quý');
+  assert.equal(bar.source_updated_at, '2026-11-17T03:30:00.000Z'); // 10:30 Vietnam time
+  const kilo = quotes.find((q) => q.unit === 'kg');
+  assert.deepEqual([kilo.buy, kilo.sell, kilo.pure], [38_879_903, 40_079_900, false]);
+  const other = quotes.at(-1);
+  assert.equal(other.group, 'Bạc Thương Hiệu Khác');
+  assert.equal(other.sell, null); // "_" on the site
+});
+
+test('Phú Quý: missing update time is tolerated; bad payloads throw', () => {
+  assert.equal(phuquy.parse(fixtureText('phuquy.html'), T, null)[0].source_updated_at, null);
+  assert.throws(() => phuquy.parse('<html></html>'), /not found/);
+  // A price per chỉ would be a silent unit change → rejected.
+  const perChi = fixtureText('phuquy.html').replace(/1,458,000/g, '145,800');
+  assert.throws(() => phuquy.parse(perChi), /range/);
+});
+
+test('htmlText decodes hex entities', () => {
+  assert.equal(htmlText('B&#x1EA0;C MI&#x1EBE;NG'), 'BẠC MIẾNG');
 });

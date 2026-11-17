@@ -9,6 +9,11 @@
   let fxCcy = FX_CCYS.includes(params.get('fx')) ? params.get('fx') : 'usd';
   let fxRange = RANGES.includes(params.get('fxrange')) ? params.get('fxrange') : '24h'; // FX chart's own range
   let fxData = null;
+  // Silver block: its own range and gap unit.
+  let agRange = RANGES.includes(params.get('agrange')) ? params.get('agrange') : '24h';
+  let agGapMode = params.get('aggap') === 'pct' ? 'pct' : 'abs';
+  let agData = null;
+  let agPlots = [];
   let data = null;
   let charts = [];
   let fxPlot = null;
@@ -132,6 +137,72 @@
     fxPlot = fxChart(fxData.t.map((ms) => ms / 1e3));
   }
 
+  // --- Silver: Phú Quý buy/sell band + converted world silver; gap vs world ---
+  function agPriceChart(t) {
+    const opts = baseOpts(chartHeight(), agRange);
+    opts.series.push(
+      { label: 'Phú Quý mua vào', stroke: '#8a94a6', width: 1, dash: [4, 4], value: legendVnd },
+      { label: 'Phú Quý bán ra', stroke: '#4a5568', width: 2, value: legendVnd },
+      { label: 'Bạc thế giới quy đổi', stroke: '#111', width: 2, value: legendVnd },
+    );
+    opts.bands = [{ series: [2, 1], fill: 'rgba(138, 148, 166, 0.18)' }];
+    opts.axes[1].values = (u, splits) => splits.map((v) => `${short.format(v / 1e6)} tr`);
+    return new uPlot(opts, [t, agData.silver_buy, agData.silver_sell, agData.world_xag_vnd_luong], $('chart-ag-price'));
+  }
+
+  function agGapChart(t) {
+    const opts = baseOpts(chartHeight(), agRange);
+    const isPct = agGapMode === 'pct';
+    opts.series.push({ label: 'Bạc miếng Phú Quý', stroke: '#4a5568', width: 2, value: isPct ? legendPct : legendGapVnd });
+    opts.axes[1].values = isPct ? axisPct : (u, splits) => splits.map((v) => `${vnd.format(v)}`);
+    opts.axes[1].size = 80;
+    return new uPlot(opts, [t, isPct ? agData.gap_silver_pct : agData.gap_silver_abs], $('chart-ag-gap'));
+  }
+
+  function destroyAg() {
+    agPlots.forEach((c) => c.destroy());
+    agPlots = [];
+  }
+
+  function agMessage(text) {
+    $('ag-charts').hidden = text != null;
+    $('ag-empty').hidden = text == null;
+    if (text != null) $('ag-empty').textContent = text;
+  }
+
+  function drawAgGap(t) {
+    const hasGap = agData.gap_silver_abs.filter((v) => v != null).length >= 2; // one point draws no line
+    $('chart-ag-gap').hidden = !hasGap;
+    $('ag-gap-empty').hidden = hasGap;
+    if (!hasGap) {
+      $('ag-gap-empty').textContent = 'Chưa có dữ liệu giá bạc trong nước cho khoảng thời gian này (giá Phú Quý được ghi từ khi ứng dụng chạy).';
+      return null;
+    }
+    return agGapChart(t);
+  }
+
+  function drawAg() {
+    destroyAg();
+    if (!agData?.silver_enough) {
+      agMessage('Chưa đủ dữ liệu giá bạc cho khoảng thời gian này.');
+      return;
+    }
+    agMessage(null);
+    const t = agData.t.map((ms) => ms / 1e3);
+    agPlots = [agPriceChart(t), drawAgGap(t)].filter(Boolean);
+  }
+
+  async function loadAg() {
+    syncButtons();
+    try {
+      agData = await getHistory(agRange);
+      drawAg();
+    } catch {
+      destroyAg();
+      agMessage('Không tải được dữ liệu giá bạc.');
+    }
+  }
+
   async function loadFx() {
     syncButtons();
     try {
@@ -176,6 +247,8 @@
     document.querySelectorAll('#gap-mode button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.mode === gapMode)));
     document.querySelectorAll('#fx-ccy button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.ccy === fxCcy)));
     document.querySelectorAll('#fx-range button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.range === fxRange)));
+    document.querySelectorAll('#ag-range button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.range === agRange)));
+    document.querySelectorAll('#ag-gap-mode button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.mode === agGapMode)));
   }
 
   function syncUrl() {
@@ -184,6 +257,8 @@
     if (gapMode === 'pct') p.set('gap', 'pct'); else p.delete('gap');
     if (fxCcy !== 'usd') p.set('fx', fxCcy); else p.delete('fx');
     if (fxRange !== '24h') p.set('fxrange', fxRange); else p.delete('fxrange');
+    if (agRange !== '24h') p.set('agrange', agRange); else p.delete('agrange');
+    if (agGapMode === 'pct') p.set('aggap', 'pct'); else p.delete('aggap');
     history.replaceState(null, '', `${location.pathname}?${p}`);
   }
 
@@ -229,6 +304,23 @@
     if (fxData) drawFx();
   });
 
+  $('ag-range').addEventListener('click', (e) => {
+    const r = e.target.closest('button')?.dataset.range;
+    if (!r || r === agRange) return;
+    agRange = r;
+    syncUrl();
+    loadAg();
+  });
+
+  $('ag-gap-mode').addEventListener('click', (e) => {
+    const m = e.target.closest('button')?.dataset.mode;
+    if (!m || m === agGapMode) return;
+    agGapMode = m;
+    syncUrl();
+    syncButtons();
+    if (agData?.silver_enough) drawAg();
+  });
+
   $('fx-range').addEventListener('click', (e) => {
     const r = e.target.closest('button')?.dataset.range;
     if (!r || r === fxRange) return;
@@ -244,9 +336,11 @@
       const size = { width: $('history').clientWidth, height: chartHeight() };
       charts.forEach((c) => c.setSize(size));
       fxPlot?.setSize(size);
+      agPlots.forEach((c) => c.setSize(size));
     }, 150);
   });
 
   load();
   loadFx();
+  loadAg();
 })();

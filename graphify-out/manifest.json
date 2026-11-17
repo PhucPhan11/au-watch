@@ -18,9 +18,9 @@
     "semantic_hash": ""
   },
   "pages/pages.js": {
-    "mtime": 1794884376.2294707,
-    "seen": 1794884548.5664017,
-    "ast_hash": "3e142be43298bd1b63d565b1f62e4dc8",
+    "mtime": 1794886795.911298,
+    "seen": 1794887274.4494646,
+    "ast_hash": "29ffa32580f0dd84c3f46e3871b9e76f",
     "semantic_hash": ""
   },
   "src/app.js": {
@@ -48,10 +48,10 @@
     "semantic_hash": ""
   },
   "src/fetchers/goldapi.js": {
-    "mtime": 1793767077.15691,
-    "seen": 1793780371.5684497,
-    "ast_hash": "3dfb2807d7c594efed7c01d63bcdcac2",
-    "semantic_hash": "3dfb2807d7c594efed7c01d63bcdcac2"
+    "mtime": 1794886524.0778778,
+    "seen": 1794887274.4495406,
+    "ast_hash": "8ffb52ad9fc8f2b36153b77dcbe184a2",
+    "semantic_hash": ""
   },
   "src/fetchers/huythanh.js": {
     "mtime": 1793779050.8496115,
@@ -78,16 +78,16 @@
     "semantic_hash": "9d62e4078e8ea12f08ff8a106787ae8d"
   },
   "src/fetchers/swissquote.js": {
-    "mtime": 1793767077.270699,
-    "seen": 1793780371.5684574,
-    "ast_hash": "e08b9fdaa8da1729edefe18d44552b9f",
-    "semantic_hash": "e08b9fdaa8da1729edefe18d44552b9f"
+    "mtime": 1794886530.400047,
+    "seen": 1794887274.4495783,
+    "ast_hash": "7d8de85917fad2224c00e242cb4da7f6",
+    "semantic_hash": ""
   },
   "src/fetchers/util.js": {
-    "mtime": 1793779049.2087178,
-    "seen": 1793780371.568459,
-    "ast_hash": "dc31b77ed50a5cee778a395d870d2053",
-    "semantic_hash": "dc31b77ed50a5cee778a395d870d2053"
+    "mtime": 1794886548.5291407,
+    "seen": 1794887274.4495833,
+    "ast_hash": "10079e94d226d614ac0475128435d49c",
+    "semantic_hash": ""
   },
   "src/fetchers/vcb.js": {
     "mtime": 1794884375.9474137,
@@ -96,9 +96,9 @@
     "semantic_hash": ""
   },
   "src/history.js": {
-    "mtime": 1794885018.105219,
-    "seen": 1794885472.3784306,
-    "ast_hash": "f725cd963e681cb91324e3c6a7f7c5a1",
+    "mtime": 1794886675.3182168,
+    "seen": 1794887274.449593,
+    "ast_hash": "f241c772afe80bca9dcf9e79a69254e1",
     "semantic_hash": ""
   },
   "src/http.js": {
@@ -114,21 +114,21 @@
     "semantic_hash": "1795d91f648ee76e201bded844fc3627"
   },
   "src/public/charts.js": {
-    "mtime": 1794885970.4250422,
-    "seen": 1794886025.164566,
-    "ast_hash": "e67fc1bb4ede906516e8237337952fdd",
+    "mtime": 1794887149.9558465,
+    "seen": 1794887274.4496086,
+    "ast_hash": "210c4f4c24405efc7b0c3ccc63138b32",
     "semantic_hash": ""
   },
   "src/render.js": {
-    "mtime": 1794885732.0763118,
-    "seen": 1794886025.1645696,
-    "ast_hash": "93cd9692cf4a106dfd744354b00a733a",
+    "mtime": 1794886842.236514,
+    "seen": 1794887274.4496138,
+    "ast_hash": "822ce7ee0e5ff2eae74ad7d3797b1ae7",
     "semantic_hash": ""
   },
   "src/scheduler.js": {
-    "mtime": 1794884376.0855584,
-    "seen": 1794884548.5664415,
-    "ast_hash": "a91308c77eecb270c338b25b6c8f09d5",
+    "mtime": 1794886605.6978693,
+    "seen": 1794887274.4496198,
+    "ast_hash": "93c74fe34bf792969e7c7d96791ca1ee",
     "semantic_hash": ""
   },
   "src/server.js": {
@@ -144,9 +144,9 @@
     "semantic_hash": "482716e1fb04dc634cc03de7e5b6ea09"
   },
   "test/fetchers.test.js": {
-    "mtime": 1794884475.3190598,
-    "seen": 1794884548.5664482,
-    "ast_hash": "5c77360c0c989135d1cb8a0dbf1987f3",
+    "mtime": 1794886984.1317847,
+    "seen": 1794887274.4496439,
+    "ast_hash": "d84d9186f95fcb09c6c315351de19452",
     "semantic_hash": ""
   },
   "test/fixtures/erapi.json": {
@@ -192,33 +192,33 @@
     "semantic_hash": ""
   },
   "test/history.test.js": {
-    "mtime": 1794885208.2545712,
-    "seen": 1794885472.3784869,
-    "ast_hash": "30aea1a9391b215031f689ac649b1a77",
+    "mtime": 1794886984.274916,
+    "seen": 1794887274.4497306,
+    "ast_hash": "bfb454fea0cbdd49dcb94cc463d36284",
     "semantic_hash": ""
   },
   "test/render.test.js": {
-    "mtime": 1794885732.0795765,
-    "seen": 1794886025.1646216,
-    "ast_hash": "a2bc69df0ea3a220a2272ba9f9a3117e",
+    "mtime": 1794886984.2764513,
+    "seen": 1794887274.449736,
+    "ast_hash": "17b1acd91b96885caf1e079ed2f3e0dc",
     "semantic_hash": ""
   },
   "test/scheduler.test.js": {
-    "mtime": 1794884475.3200765,
-    "seen": 1794884548.566469,
-    "ast_hash": "bccce5245182d25284a0661e10ffeb88",
+    "mtime": 1794886984.273917,
+    "seen": 1794887274.4497418,
+    "ast_hash": "0b2f0c87dd26e9fcca85d0670cbd0e0f",
     "semantic_hash": ""
   },
   "CLAUDE.md": {
-    "mtime": 1794885449.4607275,
-    "seen": 1794885472.3784962,
-    "ast_hash": "cc2bbdabab9eea81cdaa7b016dd10702",
+    "mtime": 1794887330.716452,
+    "seen": 1794887358.5029197,
+    "ast_hash": "7863b14cc404fecb7e493ad9b96a7152",
     "semantic_hash": ""
   },
   "README.md": {
-    "mtime": 1794886007.453055,
-    "seen": 1794886025.1646285,
-    "ast_hash": "0b0928d17c9c29b7ddee530e56a96b59",
+    "mtime": 1794887235.7622335,
+    "seen": 1794887274.4497523,
+    "ast_hash": "287bde793f743abda93b0b0229eb76ec",
     "semantic_hash": ""
   },
   "pages/index.html": {
@@ -240,9 +240,9 @@
     "semantic_hash": ""
   },
   "scripts/backfill.js": {
-    "mtime": 1794885072.5679808,
-    "seen": 1794885472.3783712,
-    "ast_hash": "f790cf6f1c8852de077a50e194be877d",
+    "mtime": 1794886676.4267795,
+    "seen": 1794887274.4494712,
+    "ast_hash": "ed9dbc995747acb57c7bba1ad65febde",
     "semantic_hash": ""
   },
   "src/backfill/build.js": {
@@ -291,6 +291,36 @@
     "mtime": 1793779003.3792331,
     "seen": 1794881297.6520076,
     "ast_hash": "de2d0c4d81dae21082b4a920d9d6b1b3",
+    "semantic_hash": ""
+  },
+  "src/fetchers/phuquy.js": {
+    "mtime": 1794886535.857375,
+    "seen": 1794887274.4495664,
+    "ast_hash": "c5ea6c2318a1d6a9e3cc0f0ae88b362b",
+    "semantic_hash": ""
+  },
+  "test/fixtures/goldapi-xag.json": {
+    "mtime": 1794886429.9200344,
+    "seen": 1794887274.4496555,
+    "ast_hash": "a61856f6123fe671c4a0f4afe70eac5d",
+    "semantic_hash": ""
+  },
+  "test/fixtures/phuquy-time.json": {
+    "mtime": 1794886429.352056,
+    "seen": 1794887274.449673,
+    "ast_hash": "0508f148a38bb0713be2c7286768dff0",
+    "semantic_hash": ""
+  },
+  "test/fixtures/swissquote-xag.json": {
+    "mtime": 1794886430.4581716,
+    "seen": 1794887274.4496896,
+    "ast_hash": "d70e04810595ff2703fd8a6cc92e9e24",
+    "semantic_hash": ""
+  },
+  "test/fixtures/phuquy.html": {
+    "mtime": 1794886429.2977061,
+    "seen": 1794887274.449776,
+    "ast_hash": "73f5e387d088ef5bcdcbc1caabd52cf1",
     "semantic_hash": ""
   },
   "package-lock.json": {

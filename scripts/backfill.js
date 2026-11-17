@@ -1,4 +1,4 @@
-// One-off history backfill: fetches past prices for the charted series (gold + USD/CHF/JPY rates), writes the committed
+// One-off history backfill: fetches past prices for the charted series (gold, world silver, USD/CHF/JPY rates), writes the committed
 // seed (seed/history.json.gz) and imports it into DATA_DIR/history.db.
 // Each range tier (5y, 1y, 30d, 7d/24h) is fetched independently; a tier that fails is skipped.
 // Usage: npm run backfill
@@ -70,6 +70,12 @@ async function pnjTier(tier) {
   return { ...out, days: days.length, failed };
 }
 
+// World metal prices (USD/oz): COMEX futures. Vietnamese silver (Phú Quý) has no history source.
+const METALS = {
+  world_xau: { symbol: 'GC=F', product: 'XAU/USD', digits: 2 },
+  world_xag: { symbol: 'SI=F', product: 'XAG/USD', digits: 3 },
+};
+
 const FX = [
   { ccy: 'USD', key: 'fx_usdvnd', direct: 'USDVND=X', cross: null, digits: 0 },
   { ccy: 'CHF', key: 'fx_chfvnd', direct: 'CHFVND=X', cross: 'CHF=X', digits: 0 },
@@ -112,7 +118,7 @@ async function fxTier(fx, tier, usdPoints) {
 
 async function main() {
   // per-series lists of tiers, finest first
-  const series = Object.fromEntries(['vn_sjc', 'vn_pnj_ring', 'world_xau', ...FX.map((f) => f.key)].map((k) => [k, []]));
+  const series = Object.fromEntries(['vn_sjc', 'vn_pnj_ring', ...Object.keys(METALS), ...FX.map((f) => f.key)].map((k) => [k, []]));
 
   for (const tier of TIERS) {
     const status = { tier: tier.name };
@@ -124,12 +130,14 @@ async function main() {
     } catch (err) {
       status.pnj = `skipped: ${err.message}`;
     }
-    try {
-      series.world_xau.push(await fetchChart(yahooHttp, 'GC=F', ...tier.yahoo));
-      status.world_xau = `ok (${series.world_xau.at(-1).length} points @${tier.yahoo[1]})`;
-    } catch (err) {
-      series.world_xau.push([]);
-      status.world_xau = `skipped: ${err.message}`;
+    for (const [key, m] of Object.entries(METALS)) {
+      try {
+        series[key].push(await fetchChart(yahooHttp, m.symbol, ...tier.yahoo));
+        status[key] = `ok (${series[key].at(-1).length} points @${tier.yahoo[1]})`;
+      } catch (err) {
+        series[key].push([]);
+        status[key] = `skipped: ${err.message}`;
+      }
     }
     for (const fx of FX) {
       try {
@@ -151,10 +159,11 @@ async function main() {
   for (const key of ['vn_sjc', 'vn_pnj_ring']) {
     if (merged[key].length) seed.series[key] = { ...pnjHistory.META[key], rows: toChangeRows(merged[key]) };
   }
-  if (merged.world_xau.length) {
-    seed.series.world_xau = {
-      source: 'Yahoo Finance (COMEX GC=F)', product: 'XAU/USD', unit: 'oz', currency: 'USD',
-      rows: toChangeRows(closeToQuotes(merged.world_xau, { digits: 2 })),
+  for (const [key, m] of Object.entries(METALS)) {
+    if (!merged[key].length) continue;
+    seed.series[key] = {
+      source: `Yahoo Finance (COMEX ${m.symbol})`, product: m.product, unit: 'oz', currency: 'USD',
+      rows: toChangeRows(closeToQuotes(merged[key], { digits: m.digits })),
     };
   }
   // Yahoo rates are mid-market; scale buy/sell separately so history carries VCB's spread.

@@ -14,6 +14,11 @@ export function inRange(n, min, max, what) {
 export const VND_LUONG_MIN = 10_000_000;
 export const VND_LUONG_MAX = 1_000_000_000;
 
+// Silver, VND per lượng: plausible band 200k–20M (≈ 1.5M in 2026).
+export const VND_LUONG_SILVER_MIN = 200_000;
+export const VND_LUONG_SILVER_MAX = 20_000_000;
+export const LUONG_PER_KG = 1000 / 37.5; // ≈ 26.67
+
 // --- Store helpers (Cần Thơ stores quote VND per chỉ; 1 lượng = 10 chỉ) ---
 
 /**
@@ -48,6 +53,7 @@ export function htmlText(fragment) {
     .replace(/&nbsp;/g, ' ')
     .replace(/&amp;/g, '&')
     .replace(/&#(\d+);/g, (_, c) => String.fromCodePoint(Number(c)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, c) => String.fromCodePoint(parseInt(c, 16)))
     .replace(/\s+/g, ' ')
     .trim();
 }

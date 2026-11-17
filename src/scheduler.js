@@ -8,8 +8,12 @@ import * as erapi from './fetchers/erapi.js';
 import * as ngoctham from './fetchers/ngoctham.js';
 import * as minhvu from './fetchers/minhvu.js';
 import * as huythanh from './fetchers/huythanh.js';
+import * as phuquy from './fetchers/phuquy.js';
 
-export const FETCHERS = { pnj, goldapi, swissquote, vcb, erapi, ngoctham, minhvu, huythanh };
+export const FETCHERS = {
+  pnj, goldapi, swissquote, vcb, erapi, ngoctham, minhvu, huythanh, phuquy,
+  goldapi_xag: goldapi.xag, swissquote_xag: swissquote.xag,
+};
 
 const byCode = (code) => (quotes) => quotes.filter((q) => q.code === code);
 const first = (quotes) => quotes.slice(0, 1);
@@ -37,7 +41,13 @@ export const FX_SLOTS = [
   { key: 'fx_rates', sources: [{ fetcher: 'vcb', pick: fxCodes }, { fetcher: 'erapi', pick: fxCodes }] },
 ];
 
-export const SLOTS = [...CORE_SLOTS, ...FX_SLOTS, ...STORE_SLOTS];
+/** Silver: world XAG (gold-api → Swissquote) and Phú Quý's table. Recorded in history, not in /health. */
+export const SILVER_SLOTS = [
+  { key: 'world_xag', sources: [{ fetcher: 'goldapi_xag', pick: first }, { fetcher: 'swissquote_xag', pick: first }] },
+  { key: 'vn_silver_pq', sources: [{ fetcher: 'phuquy', pick: all }] },
+];
+
+export const SLOTS = [...CORE_SLOTS, ...FX_SLOTS, ...SILVER_SLOTS, ...STORE_SLOTS];
 
 export async function refreshOnce({ cache, http, fetchers = FETCHERS, slots = SLOTS, now = () => new Date(), onFetch = null }) {
   // Each source is requested at most once per cycle, even if several slots use it.

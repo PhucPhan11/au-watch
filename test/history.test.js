@@ -300,3 +300,49 @@ test('importSeed loads CHF/JPY series', () => {
   assert.deepEqual(res.rows, { fx_chfvnd: 1, fx_jpyvnd: 1 });
   h.close();
 });
+
+// --- Silver series ---
+
+function silverSlots(at, { ag = 1_503_000, xag = 47.5 } = {}) {
+  const ok_at = new Date(at).toISOString();
+  return {
+    world_xag: { key: 'world_xag', stale: false, ok_at, quotes: [{ source: 'test', product: 'XAG/USD', buy: xag, sell: xag, unit: 'oz', currency: 'USD' }] },
+    vn_silver_pq: {
+      key: 'vn_silver_pq', stale: false, ok_at,
+      quotes: [
+        { source: 'Phú Quý', code: 'PQ_1L', product: 'Bạc miếng', buy: ag - 45_000, sell: ag, unit: 'luong', currency: 'VND' },
+        { source: 'Phú Quý', code: 'PQ_5', product: 'Bạc khác', buy: 1_413_370, sell: null, unit: 'luong', currency: 'VND' },
+      ],
+    },
+  };
+}
+
+test('silver: PQ_1L recorded as vn_silver, world_xag recorded; columns, gap and silver_enough', () => {
+  const h = openHistory(file);
+  h.record({ ...allSlots(T0), ...silverSlots(T0) });
+  h.record({ ...allSlots(T0 + 10 * MIN), ...silverSlots(T0 + 10 * MIN, { ag: 1_510_000 }) });
+  const series = rows().map((r) => r.series);
+  assert.equal(series.filter((s) => s === 'vn_silver').length, 2);
+  assert.equal(series.filter((s) => s === 'world_xag').length, 1);
+  const q = h.query('24h', T0 + 15 * MIN);
+  const world = usdOzToVndLuong(47.5, 25_930);
+  assert.equal(q.silver_sell.at(-1), 1_510_000);
+  assert.equal(q.silver_buy.at(-1), 1_465_000);
+  assert.ok(Math.abs(q.world_xag_vnd_luong.at(-1) - world) < 1e-6);
+  assert.ok(Math.abs(q.gap_silver_pct.at(-1) - gap(1_510_000, world).pct) < 1e-9);
+  assert.equal(q.silver_enough, true);
+  h.close();
+});
+
+test('silver: world line alone (backfill) is enough to draw; no gap without Phú Quý', () => {
+  const h = openHistory(file);
+  h.importSeed(writeSeed('2026-11-17T00:00:00.000Z', {
+    world_xag: { source: 'Yahoo', product: 'XAG/USD', unit: 'oz', currency: 'USD', rows: [[T0 - 3 * HOUR, T0, 47, 47]] },
+    fx_usdvnd: { source: 'Yahoo', product: 'USD/VND', unit: 'USD', currency: 'VND', rows: [[T0 - 3 * HOUR, T0, 25_500, 25_900]] },
+  }));
+  const q = h.query('24h', T0);
+  assert.equal(q.silver_enough, true);
+  assert.ok(q.world_xag_vnd_luong.at(-1) > 0);
+  assert.ok(q.gap_silver_abs.every((v) => v == null));
+  h.close();
+});

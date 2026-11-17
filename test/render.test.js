@@ -94,3 +94,29 @@ test('FX history chart has its own 5 range buttons', () => {
   const block = /id="fx-range"[\s\S]*?<\/div>/.exec(html)?.[0] ?? '';
   for (const r of ['24h', '7d', '30d', '1y', '5y']) assert.ok(block.includes(`data-range="${r}"`), r);
 });
+
+test('silver section: Phú Quý rows with gap on 999 per-lượng rows; world card; Pages note', () => {
+  const silver = {
+    ...withWorld,
+    world_xag: { key: 'world_xag', stale: false, source_used: 'goldapi_xag', primary: true, ok_at: AT, quotes: [{ buy: 47.5, sell: 47.5 }] },
+    vn_silver_pq: {
+      key: 'vn_silver_pq', stale: false, source_used: 'phuquy', primary: true, ok_at: AT,
+      quotes: [
+        { code: 'PQ_1L', product: 'Bạc Miếng Phú Quý 999 1 Lượng', group: 'Bạc Thương Hiệu Phú Quý', buy: 1_458_000, sell: 1_503_000, unit: 'luong', pure: true },
+        { code: 'PQ_4', product: 'Bạc Thỏi Phú Quý 999 1kilo', group: 'Bạc Thương Hiệu Phú Quý', buy: 38_879_903, sell: 40_079_900, unit: 'kg', pure: false },
+      ],
+    },
+  };
+  const html = renderPage(silver);
+  const world = usdOzToVndLuong(47.5, 25_930);
+  assert.match(html, /id="silver"/);
+  assert.match(html, /Giá bạc thế giới/);
+  assert.ok(html.includes(vnd(world)), 'converted world silver đ/lượng');
+  assert.ok(html.includes(`${vnd(gap(1_503_000, world).abs)} đ`), 'gap on the 1-lượng bar');
+  assert.match(html, /40\.079\.900/);
+  assert.match(html, /đ\/kg/);
+  assert.match(html, /id="ag-range"/);
+  const pages = renderPage(silver, { withHistory: false, withStores: false, withSilver: false });
+  assert.doesNotMatch(pages, /id="silver"/);
+  assert.match(pages, /Giá bạc Phú Quý chỉ có khi chạy ứng dụng trên máy/);
+});

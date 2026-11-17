@@ -1,4 +1,6 @@
 {
+  "3": "{ id, source, parse, fetch }",
   "7": "render.js",
-  "14": "Gia vang tai Can Tho (store price tables)"
+  "14": "Gia vang tai Can Tho (store price tables)",
+  "15": "{ id, source, parse, fetch }"
 }

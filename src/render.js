@@ -53,10 +53,27 @@ const HISTORY_SECTION = `<section class="history" id="history">
     <div class="chart" id="chart-fx" hidden></div>
     <div class="empty" id="fx-empty" hidden></div>
   </div>
+  <div id="ag-history">
+    <h3 class="block-title">Lịch sử giá bạc</h3>
+    <div class="seg" role="group" aria-label="Khoảng thời gian giá bạc" id="ag-range">
+      <button type="button" data-range="24h">24 giờ</button><button type="button" data-range="7d">7 ngày</button><button type="button" data-range="30d">30 ngày</button><button type="button" data-range="1y">1 năm</button><button type="button" data-range="5y">5 năm</button>
+    </div>
+    <div id="ag-charts" hidden>
+      <h3>Bạc miếng Phú Quý 999 so với bạc thế giới (đ/lượng)</h3>
+      <div class="chart" id="chart-ag-price"></div>
+      <h3><span>Chênh lệch giá bạc so với thế giới</span>
+        <span class="seg" role="group" aria-label="Đơn vị chênh lệch giá bạc" id="ag-gap-mode"><button type="button" data-mode="abs">đồng</button><button type="button" data-mode="pct">%</button></span>
+      </h3>
+      <div class="chart" id="chart-ag-gap"></div>
+      <div class="empty" id="ag-gap-empty" hidden></div>
+    </div>
+    <div class="empty" id="ag-empty" hidden></div>
+  </div>
 </section>
 `;
 const HISTORY_SCRIPTS = '<script src="/assets/uPlot.iife.min.js"></script>\n<script src="/assets/charts.js"></script>\n';
 const NO_HISTORY_NOTE = '<p class="note">Biểu đồ lịch sử chỉ có khi chạy ứng dụng trên máy (npm start).</p>\n';
+const NO_SILVER_NOTE = '<p class="note">Giá bạc Phú Quý chỉ có khi chạy ứng dụng trên máy (npm start).</p>\n';
 const NO_STORES_NOTE = '<p class="note">Giá cửa hàng Cần Thơ chỉ có khi chạy ứng dụng trên máy (npm start).</p>\n';
 
 const STORES = [
@@ -75,6 +92,49 @@ const rate = (n, digits) => (n == null
   : new Intl.NumberFormat('vi-VN', { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(n));
 
 /** USD / CHF / JPY → VND table (Vietcombank; ExchangeRate-API mid rates as fallback). */
+const vndKg = (luong) => luong * (1000 / 37.5);
+
+/** Phú Quý silver table + world silver card. Gap only for 999 per-lượng rows with a sell price. */
+function renderSilver(slots, fxRate) {
+  const ws = slots.world_xag;
+  const xag = ws?.quotes?.[0];
+  const xagUsd = xag ? mid(xag) : null;
+  const xagVnd = xagUsd && fxRate ? usdOzToVndLuong(xagUsd, fxRate) : null;
+  const slot = slots.vn_silver_pq;
+  const quotes = slot?.quotes ?? [];
+  let group = null;
+  const rows = quotes.map((q) => {
+    const head = q.group && q.group !== group ? `<tr class="group"><th colspan="5">${esc(q.group)}</th></tr>` : '';
+    group = q.group;
+    const unit = q.unit === 'kg' ? 'đ/kg' : 'đ/lượng';
+    return `${head}<tr>
+        <td data-label="Sản phẩm">${q.code === 'PQ_1L' ? `<strong>${esc(q.product)}</strong>` : esc(q.product)}</td>
+        <td data-label="Đơn vị">${unit}</td>
+        <td data-label="Mua vào">${q.buy != null ? vnd(q.buy) : '—'}</td>
+        <td data-label="Bán ra">${q.sell != null ? vnd(q.sell) : '—'}</td>
+        <td data-label="Chênh lệch">${q.pure && q.sell != null && xagVnd ? gapHtml(q.sell, xagVnd) : '—'}</td>
+      </tr>`;
+  }).join('');
+  return `<section class="silver${slot?.stale ? ' stale' : ''}" id="silver">
+  <h2>Giá bạc</h2>
+  <div class="info silver-info">
+    <div class="card">
+      <h2>Giá bạc thế giới</h2>
+      <div class="big">${xagUsd ? `${usd(xagUsd)} USD/oz` : '—'}</div>
+      <div>Quy đổi: <strong>${xagVnd ? `${vnd(xagVnd)} đ/lượng` : '—'}</strong>${xagVnd ? ` · ${vnd(vndKg(xagVnd))} đ/kg` : ''}</div>
+      <small>Nguồn: ${esc(sourceName(ws))} · Cập nhật: ${time(ws?.ok_at)}</small> ${status(ws)}
+    </div>
+  </div>
+  <h3 class="store-head"><span>Phú Quý</span><span class="meta">Cửa hàng cập nhật: ${time(quotes[0]?.source_updated_at)} · Lấy lúc: ${time(slot?.ok_at)} ${status(slot)}</span></h3>
+  <table>
+    <thead><tr><th>Sản phẩm</th><th>Đơn vị</th><th>Mua vào</th><th>Bán ra</th><th>Chênh lệch so với thế giới</th></tr></thead>
+    <tbody>${rows || '<tr><td colspan="5">Chưa có dữ liệu</td></tr>'}</tbody>
+  </table>
+  <p class="sub">Giá Phú Quý đã gồm thuế GTGT, nên chênh lệch bao gồm khoảng 10% VAT cùng thuế nhập khẩu và phí. Chênh lệch chỉ tính cho bạc 999 theo lượng.</p>
+</section>
+`;
+}
+
 function renderFx(slots) {
   const slot = slots.fx_rates;
   const quotes = slot?.quotes ?? [];
@@ -136,8 +196,9 @@ function renderStores(slots, worldVnd) {
 /**
  * withHistory: false → no chart section or chart assets (static GitHub Pages build).
  * withStores: false → no Cần Thơ store section (the stores can't be fetched from a browser).
+ * withSilver: false → no silver section (Phú Quý sends no CORS headers).
  */
-export function renderPage(slots, { withHistory = true, withStores = true } = {}) {
+export function renderPage(slots, { withHistory = true, withStores = true, withSilver = true } = {}) {
   const world = slots.world_xau?.quotes?.[0];
   const fx = slots.fx_usdvnd?.quotes?.[0];
   const worldUsd = world ? mid(world) : null;
@@ -199,6 +260,16 @@ ${withHistory ? HISTORY_HEAD : ''}<style>
     td[data-label]:not(:first-child)::before { content: attr(data-label); color: #555; text-align: left; }
     .info { grid-template-columns: 1fr; }
   }
+  .silver { margin-top: 28px; }
+  .silver > h2 { font-size: 1.05rem; margin: 0 0 8px; }
+  .silver .info { margin-top: 0; grid-template-columns: 1fr; }
+  .silver .sub { margin: 6px 0 0; font-size: .8rem; }
+  .silver.stale td { background: #fff7e6; }
+  .store-head { font-size: .95rem; margin: 16px 0 6px; display: flex; flex-wrap: wrap; gap: 4px 12px; justify-content: space-between; align-items: baseline; }
+  .store-head .meta { font-size: .8rem; font-weight: normal; color: #666; }
+  tr.group th { text-align: left; font-size: .8rem; background: #f3f3f3; }
+  .block-title { margin-top: 28px !important; font-size: 1rem !important; }
+  #ag-range { margin: 0 0 8px; flex-wrap: wrap; }
   .fx { margin-top: 28px; }
   .fx h2 { font-size: 1.05rem; margin: 0 0 8px; }
   .fx .sub { margin: 6px 0 0; font-size: .8rem; }
@@ -245,7 +316,7 @@ ${withHistory ? HISTORY_HEAD : ''}<style>
     <small>Nguồn: ${esc(sourceName(fs))} · Cập nhật: ${time(fs?.ok_at)}</small> ${status(fs)}
   </div>
 </div>
-${renderFx(slots)}${withStores ? renderStores(slots, worldVnd) : NO_STORES_NOTE}${withHistory ? HISTORY_SECTION : NO_HISTORY_NOTE}<p class="note">Chênh lệch = giá bán ra trong nước − giá thế giới quy đổi (giá USD/oz × 1,205653 oz/lượng × tỷ giá). Chưa tính thuế, phí gia công, vận chuyển. Chỉ mang tính tham khảo.</p>
+${renderFx(slots)}${withSilver ? renderSilver(slots, fxRate) : NO_SILVER_NOTE}${withStores ? renderStores(slots, worldVnd) : NO_STORES_NOTE}${withHistory ? HISTORY_SECTION : NO_HISTORY_NOTE}<p class="note">Chênh lệch = giá bán ra trong nước − giá thế giới quy đổi (giá USD/oz × 1,205653 oz/lượng × tỷ giá). Chưa tính thuế, phí gia công, vận chuyển. Chỉ mang tính tham khảo.</p>
 ${withHistory ? HISTORY_SCRIPTS : ''}</body>
 </html>`;
 }
