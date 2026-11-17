@@ -43,6 +43,12 @@ const HISTORY_SECTION = `<section class="history" id="history">
     <div class="chart" id="chart-gap"></div>
   </div>
   <div class="empty" id="empty" hidden></div>
+  <div id="fx-history" hidden>
+    <h3><span>Tỷ giá (đồng / 1 ngoại tệ)</span>
+      <span class="seg" role="group" aria-label="Ngoại tệ" id="fx-ccy"><button type="button" data-ccy="usd">USD</button><button type="button" data-ccy="chf">CHF</button><button type="button" data-ccy="jpy">JPY</button></span>
+    </h3>
+    <div class="chart" id="chart-fx"></div>
+  </div>
 </section>
 `;
 const HISTORY_SCRIPTS = '<script src="/assets/uPlot.iife.min.js"></script>\n<script src="/assets/charts.js"></script>\n';

@@ -1,4 +1,4 @@
-// One-off history backfill: fetches past prices for the 4 charted series, writes the committed
+// One-off history backfill: fetches past prices for the charted series (gold + USD/CHF/JPY rates), writes the committed
 // seed (seed/history.json.gz) and imports it into DATA_DIR/history.db.
 // Each range tier (5y, 1y, 30d, 7d/24h) is fetched independently; a tier that fails is skipped.
 // Usage: npm run backfill
@@ -12,7 +12,7 @@ import { openHistory } from '../src/history.js';
 import * as vcb from '../src/fetchers/vcb.js';
 import * as pnjHistory from '../src/backfill/pnj.js';
 import { fetchChart } from '../src/backfill/yahoo.js';
-import { mergeTiers, toChangeRows, closeToQuotes, vnDays } from '../src/backfill/build.js';
+import { mergeTiers, toChangeRows, closeToQuotes, crossRate, vnDays } from '../src/backfill/build.js';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const DATA_DIR = resolve(process.env.DATA_DIR || join(ROOT, 'data'));
@@ -70,25 +70,49 @@ async function pnjTier(tier) {
   return { ...out, days: days.length, failed };
 }
 
-async function fxRatio(latestYahoo) {
-  let vcbSell = null;
+const FX = [
+  { ccy: 'USD', key: 'fx_usdvnd', direct: 'USDVND=X', cross: null, digits: 0 },
+  { ccy: 'CHF', key: 'fx_chfvnd', direct: 'CHFVND=X', cross: 'CHF=X', digits: 0 },
+  { ccy: 'JPY', key: 'fx_jpyvnd', direct: 'JPYVND=X', cross: 'JPY=X', digits: 2 },
+];
+const MIN_POINTS = 10; // Yahoo returns a single point for CHFVND=X / JPYVND=X at 5y@1d
+
+/** Today's VCB transfer (buy) and sell per currency: fresh call, else the last cached table. */
+async function vcbRates() {
+  let quotes = null;
   try {
-    vcbSell = (await vcb.fetch(http)).find((q) => q.code === 'USDVND').sell;
+    quotes = await vcb.fetch(http);
   } catch (err) {
     logEvent('error', 'backfill_fx_ratio', { source: 'vcb', error: err.message });
     const cacheFile = join(DATA_DIR, 'cache.json');
     if (existsSync(cacheFile)) {
       const c = JSON.parse(readFileSync(cacheFile, 'utf8'));
-      vcbSell = (c.slots ?? c).fx_usdvnd?.quotes?.[0]?.sell ?? null;
+      const slots = c.slots ?? c;
+      if (slots.fx_rates?.source_used === 'vcb') quotes = slots.fx_rates.quotes;
     }
   }
-  if (!vcbSell) throw new Error('no VCB sell rate available to scale Yahoo USD/VND');
-  return vcbSell / latestYahoo;
+  if (!quotes) throw new Error('no Vietcombank rates available to scale Yahoo rates');
+  return Object.fromEntries(quotes.map((q) => [q.code.slice(0, 3), { buy: q.buy, sell: q.sell }]));
+}
+
+/** One FX tier: direct VND pair, or USDVND ÷ USD/XXX when the direct pair is too thin. */
+async function fxTier(fx, tier, usdPoints) {
+  let direct = [];
+  try {
+    direct = await fetchChart(yahooHttp, fx.direct, ...tier.yahoo);
+  } catch (err) {
+    if (!fx.cross) throw err;
+  }
+  if (direct.length >= MIN_POINTS || !fx.cross) return { points: direct, via: fx.direct };
+  if (!usdPoints?.length) throw new Error(`${fx.direct} too thin and no USDVND=X points for a cross rate`);
+  const points = crossRate(usdPoints, await fetchChart(yahooHttp, fx.cross, ...tier.yahoo));
+  if (points.length < MIN_POINTS) throw new Error(`cross rate via ${fx.cross} too thin (${points.length} points)`);
+  return { points, via: `USDVND=X ÷ ${fx.cross}` };
 }
 
 async function main() {
-  const series = { vn_sjc: [], vn_pnj_ring: [], world_xau: [], fx_usdvnd: [] }; // per-series tier lists
-  const report = [];
+  // per-series lists of tiers, finest first
+  const series = Object.fromEntries(['vn_sjc', 'vn_pnj_ring', 'world_xau', ...FX.map((f) => f.key)].map((k) => [k, []]));
 
   for (const tier of TIERS) {
     const status = { tier: tier.name };
@@ -100,28 +124,30 @@ async function main() {
     } catch (err) {
       status.pnj = `skipped: ${err.message}`;
     }
-    for (const [key, symbol] of [['world_xau', 'GC=F'], ['fx_usdvnd', 'USDVND=X']]) {
+    try {
+      series.world_xau.push(await fetchChart(yahooHttp, 'GC=F', ...tier.yahoo));
+      status.world_xau = `ok (${series.world_xau.at(-1).length} points @${tier.yahoo[1]})`;
+    } catch (err) {
+      series.world_xau.push([]);
+      status.world_xau = `skipped: ${err.message}`;
+    }
+    for (const fx of FX) {
       try {
-        series[key].push(await fetchChart(yahooHttp, symbol, ...tier.yahoo));
-        status[key] = `ok (${series[key].at(-1).length} points @${tier.yahoo[1]})`;
+        const { points, via } = await fxTier(fx, tier, series.fx_usdvnd.at(-1));
+        series[fx.key].push(points);
+        status[fx.key] = `ok (${points.length} points @${tier.yahoo[1]}${via === fx.direct ? '' : `, ${via}`})`;
       } catch (err) {
-        series[key].push([]);
-        status[key] = `skipped: ${err.message}`;
+        series[fx.key].push([]);
+        status[fx.key] = `skipped: ${err.message}`;
       }
     }
     logEvent(Object.values(status).some((v) => String(v).startsWith('skipped')) ? 'error' : 'info', 'backfill_tier', status);
-    report.push(status);
   }
 
   // PNJ tiers cover disjoint day windows, so merging is a plain concatenation.
-  const merged = {
-    vn_sjc: series.vn_sjc.flat(),
-    vn_pnj_ring: series.vn_pnj_ring.flat(),
-    world_xau: mergeTiers(series.world_xau),
-    fx_usdvnd: mergeTiers(series.fx_usdvnd),
-  };
+  const merged = Object.fromEntries(Object.entries(series).map(([k, tiers]) => [k, k.startsWith('vn_') ? tiers.flat() : mergeTiers(tiers)]));
 
-  const seed = { version: 1, generated_at: new Date(NOW).toISOString(), fx_ratio: null, series: {} };
+  const seed = { version: 2, generated_at: new Date(NOW).toISOString(), fx_ratios: {}, series: {} };
   for (const key of ['vn_sjc', 'vn_pnj_ring']) {
     if (merged[key].length) seed.series[key] = { ...pnjHistory.META[key], rows: toChangeRows(merged[key]) };
   }
@@ -131,17 +157,26 @@ async function main() {
       rows: toChangeRows(closeToQuotes(merged.world_xau, { digits: 2 })),
     };
   }
-  if (merged.fx_usdvnd.length) {
-    try {
-      const ratio = await fxRatio(merged.fx_usdvnd.at(-1).close);
-      seed.fx_ratio = Math.round(ratio * 1e6) / 1e6;
-      seed.series.fx_usdvnd = {
-        source: 'Yahoo Finance (USDVND=X, scaled to Vietcombank)', product: 'USD/VND (bán ra)', unit: 'USD', currency: 'VND',
-        rows: toChangeRows(closeToQuotes(merged.fx_usdvnd, { ratio: seed.fx_ratio, digits: 0 })),
-      };
-    } catch (err) {
-      logEvent('error', 'backfill_series', { series: 'fx_usdvnd', state: 'skipped', error: err.message });
-    }
+  // Yahoo rates are mid-market; scale buy/sell separately so history carries VCB's spread.
+  let bank = null;
+  try {
+    bank = await vcbRates();
+  } catch (err) {
+    logEvent('error', 'backfill_series', { series: 'fx_*', state: 'skipped', error: err.message });
+  }
+  for (const fx of FX) {
+    const points = merged[fx.key];
+    if (!points.length || !bank?.[fx.ccy]) continue;
+    const latest = points.at(-1).close;
+    const ratio = {
+      buy: Math.round((bank[fx.ccy].buy / latest) * 1e6) / 1e6,
+      sell: Math.round((bank[fx.ccy].sell / latest) * 1e6) / 1e6,
+    };
+    seed.fx_ratios[fx.ccy] = ratio;
+    seed.series[fx.key] = {
+      source: 'Yahoo Finance (scaled to Vietcombank)', product: `${fx.ccy}/VND (bán ra)`, unit: fx.ccy, currency: 'VND',
+      rows: toChangeRows(closeToQuotes(points, { buyRatio: ratio.buy, sellRatio: ratio.sell, digits: fx.digits })),
+    };
   }
   if (Object.keys(seed.series).length === 0) throw new Error('nothing fetched; seed not written');
 
@@ -149,7 +184,7 @@ async function main() {
   const gz = gzipSync(JSON.stringify(seed), { level: 9 });
   writeFileSync(SEED_FILE, gz);
   const rows = Object.fromEntries(Object.entries(seed.series).map(([k, s]) => [k, s.rows.length]));
-  logEvent('info', 'backfill_seed', { file: SEED_FILE, bytes: gz.length, fx_ratio: seed.fx_ratio, rows });
+  logEvent('info', 'backfill_seed', { file: SEED_FILE, bytes: gz.length, fx_ratios: seed.fx_ratios, rows });
 
   const history = openHistory(join(DATA_DIR, 'history.db'));
   try {

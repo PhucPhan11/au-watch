@@ -74,7 +74,7 @@ test('/health: all sources ok', async () => {
   // Fallbacks are only called when a primary fails.
   assert.equal(body.sources.swissquote, undefined);
   assert.equal(body.slots.vn_sjc.stale, false);
-  assert.equal(body.history.rows, 4);
+  assert.equal(body.history.rows, 6); // 4 gold/USD series + CHF and JPY from the fx_rates slot
   assert.ok(body.history.last_write_at);
 });
 

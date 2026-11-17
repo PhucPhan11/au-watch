@@ -46,7 +46,7 @@ Tests use responses saved in `test/fixtures/` and never touch the network.
 | USD/VND | Vietcombank `api/exchangerates`, **sell** rate | open.er-api.com daily mid rate, shown as "tham khảo" |
 | Tỷ giá ngoại tệ table (USD, CHF, JPY → VND) | same Vietcombank request: cash buy, transfer buy, sell | open.er-api.com mid rates (CHF and JPY as cross rates via USD), shown as "tham khảo" |
 
-The exchange-rate table is display-only. It isn't stored in history, isn't part of `/health`, and doesn't affect the gap, which always uses the USD sell rate. Rates are in đồng per 1 unit, including JPY. A range check catches a switch to per-100-yen quoting. The table also appears on the GitHub Pages build.
+The exchange-rate table isn't part of `/health` and doesn't affect the gap, which always uses the USD sell rate. Rates are in đồng per 1 unit, including JPY. A range check catches a switch to per-100-yen quoting. The table also appears on the GitHub Pages build. CHF and JPY are also recorded in history (`fx_chfvnd`, `fx_jpyvnd`, see Price history).
 
 Each source is requested at most once per refresh (both Vietnamese rows share one PNJ request, and the USD row and the exchange-rate table share one Vietcombank request), with a 10 s timeout and no retry loop. The page shows "(dự phòng)" whenever a fallback source supplied a value.
 
@@ -78,7 +78,7 @@ gap_%           = gap / world_vnd_luong × 100
 If a source and its fallback both fail, that row keeps its last known value. It gets a **"Dữ liệu cũ"** badge, a highlighted background, and the time of the last successful update. The other rows are not affected. Last values are saved to `data/cache.json`, which git ignores, so they also survive a restart.
 
 ## Price history
-Every scheduled refresh records into `data/history.db`, a SQLite database through Node's built-in `node:sqlite`. History survives restarts.
+Every scheduled refresh records into `data/history.db`, a SQLite database through Node's built-in `node:sqlite`. History survives restarts. Six series are stored: `vn_sjc`, `vn_pnj_ring`, `world_xau`, `fx_usdvnd`, and `fx_chfvnd` / `fx_jpyvnd`, which are taken from the exchange-rate table's CHF and JPY rows. Exchange rates store the transfer buy and sell rates.
 
 ```sql
 snapshots(id, series, source, product, ts, seen_until, buy, sell, unit, currency)
@@ -101,13 +101,14 @@ snapshots(id, series, source, product, ts, seen_until, buy, sell, unit, currency
 | 5y | 1 day | 1825 |
 
 Each bucket holds the latest value seen in it. A bucket with no data is `null`. The response uses column arrays:
-`t` (bucket end, epoch ms), `sjc_buy`, `sjc_sell`, `ring_sell`, `world_vnd_luong`, `gap_sjc_abs`, `gap_sjc_pct`, `gap_ring_abs`, `gap_ring_pct`.
-It also includes `range`, `bucket_ms`, `from`, `to`, `first_recorded` and `enough`, which is `true` when at least 2 buckets have a gap value.
+`t` (bucket end, epoch ms), `sjc_buy`, `sjc_sell`, `ring_sell`, `world_vnd_luong`, `gap_sjc_abs`, `gap_sjc_pct`, `gap_ring_abs`, `gap_ring_pct`, and the exchange rates `usd_buy`, `usd_sell`, `chf_buy`, `chf_sell`, `jpy_buy`, `jpy_sell` (đồng per 1 unit).
+It also includes `range`, `bucket_ms`, `from`, `to`, `first_recorded` `enough`, which is `true` when at least 2 buckets have a gap value, and `fx_enough`, which is `true` when at least 2 buckets have an exchange rate.
 
 ### Charts
 Below the price table are two charts, each with a range selector (24 giờ / 7 ngày / 30 ngày / 1 năm / 5 năm):
 - **Price chart:** sell prices, with a band showing the SJC buy/sell spread, plus the converted world price.
 - **Gap chart:** the gap over time, with a toggle between đồng and %.
+- **Exchange-rate chart:** transfer buy and sell, with the spread as a band, and a USD / CHF / JPY switch (kept in the URL as `?fx=`). It is drawn whenever `fx_enough` is true, even if the gold charts don't have enough data yet.
 
 If there isn't enough history for the selected range, the page says so instead of drawing a chart.
 
@@ -119,18 +120,19 @@ rm data/history.db data/history.db-wal data/history.db-shm
 On the next start the app creates a new database and imports the committed backfill seed into it (see below). `data/cache.json`, which holds the latest values for the price table, is a separate file.
 
 ### Backfill (past prices)
-`npm run backfill` fetches past prices for the four charted series and saves them to **`seed/history.json.gz`**. This file is committed. The script then imports the seed into `data/history.db`. When the server starts, the process holding the scheduler lock imports the seed too, so a fresh clone has history without fetching anything. A seed is imported only once; the `meta` table records its `generated_at`.
+`npm run backfill` fetches past prices for the six charted series and saves them to **`seed/history.json.gz`**. This file is committed. The script then imports the seed into `data/history.db`. When the server starts, the process holding the scheduler lock imports the seed too, so a fresh clone has history without fetching anything. A seed is imported only once; the `meta` table records its `generated_at`.
 
 | Series | Source | Resolution |
 |---|---|---|
 | SJC bar, PNJ ring | PNJ change log (`get-gold-price-history?zone=00&date=YYYYMMDD`, Hồ Chí Minh zone), one request per day | Every intraday price change, about 5 years back |
 | World gold (USD/oz) | Yahoo Finance `GC=F` | 5m for the last 7 days, 15m to 60 days, 1h to 1 year, 1 day to 5 years |
 | USD/VND | Yahoo Finance `USDVND=X`, scaled to Vietcombank | Same as world gold |
+| CHF/VND, JPY/VND | Yahoo Finance `CHFVND=X` / `JPYVND=X`, scaled to Vietcombank. For 5 years, the cross rate `USDVND=X ÷ CHF=X` (`÷ JPY=X`), because the direct pairs return only one daily point | Same as world gold |
 
 - **Range tiers.** The tiers (24h/7d, 30d, 1y, 5y) are fetched independently. If one fails, it is logged (`backfill_tier`) and skipped, and the rest are still saved. A single PNJ day that fails is logged (`backfill_day`) and skipped.
 - **Live data always wins.** Seed rows (`origin = 'seed'`) are clipped to the gaps between rows recorded by the scheduler (`origin = 'live'`). Importing a newer seed replaces the old seed rows and never touches live rows.
 - **World gold is the COMEX futures price (`GC=F`), not spot.** The two are usually within a few USD/oz. gold-api.com, the live source, has no free history API.
-- **USD/VND is scaled.** Yahoo gives a mid-market rate, about 0.8% below Vietcombank's sell rate. Every point is multiplied by `VCB sell ÷ Yahoo latest` (stored as `fx_ratio` in the seed), so backfilled gaps line up with live ones. Vietcombank's own history (`?date=`) can't be used for 5 years because of its rate limit of one request per 5 minutes.
+- **Exchange rates are scaled.** Yahoo gives one mid-market rate; for USD it is about 0.8% below Vietcombank's sell rate. Each currency's buy is multiplied by `VCB transfer ÷ Yahoo latest` and its sell by `VCB sell ÷ Yahoo latest` (stored as `fx_ratios` in the seed). Backfilled rates therefore carry Vietcombank's spread, and backfilled gaps line up with live ones. This assumes the spread was constant over time. Vietcombank's own history (`?date=`) can't be used for 5 years because of its rate limit of one request per 5 minutes.
 - **Cần Thơ stores are not backfilled.** They have no history and aren't charted.
 
 Rerun `npm run backfill` to refresh the seed, then commit `seed/history.json.gz`.

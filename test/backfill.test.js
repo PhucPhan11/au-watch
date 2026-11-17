@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { parseDay } from '../src/backfill/pnj.js';
 import { parseChart } from '../src/backfill/yahoo.js';
-import { mergeTiers, toChangeRows, closeToQuotes, vnDays } from '../src/backfill/build.js';
+import { mergeTiers, toChangeRows, closeToQuotes, crossRate, vnDays } from '../src/backfill/build.js';
 
 const fixture = (name) => JSON.parse(readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8'));
 
@@ -60,4 +60,14 @@ test('closeToQuotes scales and rounds; vnDays lists Vietnam calendar days', () =
   assert.deepEqual(closeToQuotes([{ ts: 1, close: 25_000.4 }], { ratio: 1.01, digits: 0 }), [{ ts: 1, buy: 25_250, sell: 25_250 }]);
   const now = Date.parse('2026-11-17T01:00:00Z'); // 08:00 in Vietnam
   assert.deepEqual(vnDays(now - 2 * 86_400_000, now), ['20261117', '20261116', '20261115']);
+});
+
+test('closeToQuotes: separate buy/sell ratios give mid data a spread', () => {
+  assert.deepEqual(closeToQuotes([{ ts: 1, close: 160 }], { buyRatio: 0.97, sellRatio: 1.03, digits: 2 }), [{ ts: 1, buy: 155.2, sell: 164.8 }]);
+});
+
+test('crossRate: VND/USD ÷ CHF/USD on shared timestamps only', () => {
+  const usdvnd = [{ ts: 1, close: 25_000 }, { ts: 2, close: 25_100 }, { ts: 3, close: 25_200 }];
+  const usdchf = [{ ts: 1, close: 0.8 }, { ts: 3, close: 0.9 }, { ts: 4, close: 0.85 }];
+  assert.deepEqual(crossRate(usdvnd, usdchf), [{ ts: 1, close: 31_250 }, { ts: 3, close: 28_000 }]);
 });

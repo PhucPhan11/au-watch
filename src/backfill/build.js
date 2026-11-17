@@ -34,13 +34,28 @@ export function toChangeRows(points) {
   return rows;
 }
 
-/** Yahoo close points → {ts, buy, sell} with buy = sell = close × ratio, rounded to `digits`. */
-export function closeToQuotes(points, { ratio = 1, digits = 2 } = {}) {
+/**
+ * Yahoo close points → {ts, buy, sell}: buy = close × buyRatio, sell = close × sellRatio (both default
+ * to `ratio`, default 1), rounded to `digits`. Separate ratios give mid-market data a bank's spread.
+ */
+export function closeToQuotes(points, { ratio = 1, buyRatio = ratio, sellRatio = ratio, digits = 2 } = {}) {
   const f = 10 ** digits;
-  return points.map((p) => {
-    const v = Math.round(p.close * ratio * f) / f;
-    return { ts: p.ts, buy: v, sell: v };
-  });
+  const r = (v) => Math.round(v * f) / f;
+  return points.map((p) => ({ ts: p.ts, buy: r(p.close * buyRatio), sell: r(p.close * sellRatio) }));
+}
+
+/**
+ * Cross rate from two close series sharing timestamps: base (VND per USD) ÷ quote (CHF per USD)
+ * = VND per CHF. Points whose ts is missing from either side are dropped.
+ */
+export function crossRate(base, quote) {
+  const q = new Map(quote.map((p) => [p.ts, p.close]));
+  const out = [];
+  for (const p of base) {
+    const d = q.get(p.ts);
+    if (d > 0) out.push({ ts: p.ts, close: p.close / d });
+  }
+  return out;
 }
 
 /** 'YYYYMMDD' for each Vietnam calendar day in [fromMs, toMs], newest first. */

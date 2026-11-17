@@ -20,7 +20,16 @@ export const RANGES = {
   '5y': { span: 5 * 365 * DAY, bucket: DAY },
 };
 
-const SERIES = ['vn_sjc', 'vn_pnj_ring', 'world_xau', 'fx_usdvnd'];
+// Charted series → where the scheduler's slots hold them (code picks one quote of a multi-quote slot).
+export const SERIES_FROM = {
+  vn_sjc: { slot: 'vn_sjc' },
+  vn_pnj_ring: { slot: 'vn_pnj_ring' },
+  world_xau: { slot: 'world_xau' },
+  fx_usdvnd: { slot: 'fx_usdvnd' },
+  fx_chfvnd: { slot: 'fx_rates', code: 'CHFVND' },
+  fx_jpyvnd: { slot: 'fx_rates', code: 'JPYVND' },
+};
+const SERIES = Object.keys(SERIES_FROM);
 
 export function openHistory(file, { graceMs = 10 * MIN } = {}) {
   if (file !== ':memory:') mkdirSync(dirname(file), { recursive: true });
@@ -84,18 +93,18 @@ export function openHistory(file, { graceMs = 10 * MIN } = {}) {
       let touched = 0;
       db.exec('BEGIN');
       try {
-        for (const slot of Object.values(slots)) {
-          if (!SERIES.includes(slot?.key)) continue; // only the 4 charted series (not store lists)
-          const q = slot?.quotes?.[0];
+        for (const [series, from] of Object.entries(SERIES_FROM)) {
+          const slot = slots[from.slot];
+          const q = from.code ? slot?.quotes?.find((x) => x.code === from.code) : slot?.quotes?.[0];
           if (!slot || slot.stale || !q || !slot.ok_at) continue;
           const ts = Date.parse(slot.ok_at);
-          const last = latest.get(slot.key);
+          const last = latest.get(series);
           // Never extend a seed row: it would be dropped when a newer seed is imported.
           if (last && last.origin === 'live' && last.buy === q.buy && last.sell === q.sell) {
             touch.run(ts, last.id, ts);
             touched++;
           } else {
-            insert.run(slot.key, q.source, q.product, ts, ts, q.buy, q.sell, q.unit, q.currency);
+            insert.run(series, q.source, q.product, ts, ts, q.buy, q.sell, q.unit, q.currency);
             inserted++;
           }
         }
@@ -191,7 +200,9 @@ export function bucketize(rows, { from, to, bucketMs, graceMs }) {
     bucket_ms: bucketMs, from, to, t,
     sjc_buy: [], sjc_sell: [], ring_sell: [], world_vnd_luong: [],
     gap_sjc_abs: [], gap_sjc_pct: [], gap_ring_abs: [], gap_ring_pct: [],
+    usd_buy: [], usd_sell: [], chf_buy: [], chf_sell: [], jpy_buy: [], jpy_sell: [],
   };
+  let fxComplete = 0;
   let complete = 0;
   for (let i = 0; i < n; i++) {
     const sjc = pick.vn_sjc[i];
@@ -210,7 +221,16 @@ export function bucketize(rows, { from, to, bucketMs, graceMs }) {
     out.gap_ring_abs.push(gr ? gr.abs : null);
     out.gap_ring_pct.push(gr ? gr.pct : null);
     if (gs || gr) complete++;
+    let anyFx = false;
+    for (const [ccy, series] of [['usd', 'fx_usdvnd'], ['chf', 'fx_chfvnd'], ['jpy', 'fx_jpyvnd']]) {
+      const r = pick[series][i];
+      out[`${ccy}_buy`].push(r ? r.buy : null);
+      out[`${ccy}_sell`].push(r ? r.sell : null);
+      if (r) anyFx = true;
+    }
+    if (anyFx) fxComplete++;
   }
   out.enough = complete >= 2;
+  out.fx_enough = fxComplete >= 2;
   return out;
 }

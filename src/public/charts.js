@@ -5,8 +5,11 @@
   const params = new URLSearchParams(location.search);
   let range = RANGES.includes(params.get('range')) ? params.get('range') : '24h';
   let gapMode = params.get('gap') === 'pct' ? 'pct' : 'abs';
+  const FX_CCYS = ['usd', 'chf', 'jpy'];
+  let fxCcy = FX_CCYS.includes(params.get('fx')) ? params.get('fx') : 'usd';
   let data = null;
   let charts = [];
+  let fxPlot = null;
 
   const $ = (id) => document.getElementById(id);
   const vnd = new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 0 });
@@ -72,15 +75,41 @@
     return new uPlot(opts, d, $('chart-gap'));
   }
 
+  // Exchange rate (đồng per 1 unit): transfer buy (dashed) and sell, with the spread as a band.
+  function fxChart(t) {
+    const opts = baseOpts(chartHeight());
+    const digits = fxCcy === 'jpy' ? 2 : 0;
+    const nf = new Intl.NumberFormat('vi-VN', { minimumFractionDigits: digits, maximumFractionDigits: digits });
+    const value = (u, v) => (v == null ? '—' : `${nf.format(v)} đ`);
+    opts.series.push(
+      { label: 'Mua chuyển khoản', stroke: '#2e8b57', width: 1, dash: [4, 4], value },
+      { label: 'Bán ra', stroke: '#1d6b3f', width: 2, value },
+    );
+    opts.bands = [{ series: [2, 1], fill: 'rgba(46, 139, 87, 0.12)' }];
+    opts.axes[1].values = (u, splits) => splits.map((v) => nf.format(v));
+    opts.axes[1].size = 72;
+    return new uPlot(opts, [t, data[`${fxCcy}_buy`], data[`${fxCcy}_sell`]], $('chart-fx'));
+  }
+
+  function drawFx() {
+    fxPlot?.destroy();
+    fxPlot = null;
+    $('fx-history').hidden = !data?.fx_enough;
+    if (data?.fx_enough) fxPlot = fxChart(data.t.map((ms) => ms / 1e3));
+  }
+
   const chartHeight = () => (window.innerWidth < 480 ? 220 : 280);
 
   function destroy() {
     charts.forEach((c) => c.destroy());
     charts = [];
+    fxPlot?.destroy();
+    fxPlot = null;
   }
 
   function draw() {
     destroy();
+    drawFx();
     $('partial').hidden = true;
     if (!data.enough) {
       $('charts').hidden = true;
@@ -103,12 +132,14 @@
   function syncButtons() {
     document.querySelectorAll('#range button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.range === range)));
     document.querySelectorAll('#gap-mode button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.mode === gapMode)));
+    document.querySelectorAll('#fx-ccy button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.ccy === fxCcy)));
   }
 
   function syncUrl() {
     const p = new URLSearchParams(location.search);
     p.set('range', range);
     if (gapMode === 'pct') p.set('gap', 'pct'); else p.delete('gap');
+    if (fxCcy !== 'usd') p.set('fx', fxCcy); else p.delete('fx');
     history.replaceState(null, '', `${location.pathname}?${p}`);
   }
 
@@ -122,6 +153,7 @@
     } catch (err) {
       destroy();
       $('charts').hidden = true;
+      $('fx-history').hidden = true;
       $('empty').hidden = false;
       $('empty').textContent = 'Không tải được dữ liệu lịch sử.';
     }
@@ -147,12 +179,22 @@
     }
   });
 
+  $('fx-ccy').addEventListener('click', (e) => {
+    const c = e.target.closest('button')?.dataset.ccy;
+    if (!c || c === fxCcy) return;
+    fxCcy = c;
+    syncUrl();
+    syncButtons();
+    drawFx();
+  });
+
   let resizeTimer;
   window.addEventListener('resize', () => {
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(() => {
       const size = { width: $('history').clientWidth, height: chartHeight() };
       charts.forEach((c) => c.setSize(size));
+      fxPlot?.setSize(size);
     }, 150);
   });
 

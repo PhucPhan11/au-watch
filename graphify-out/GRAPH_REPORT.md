@@ -1,17 +1,17 @@
 # Graph Report - au-watch  (2026-11-17)
 
 ## Corpus Check
-- 46 files · ~30,472 words
+- 46 files · ~31,836 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 6 file(s) not represented in the graph (top: .xml 2, .example 1, (none) 1)
 
 ## Summary
-- 292 nodes · 556 edges · 15 communities (12 shown, 3 thin omitted)
+- 299 nodes · 571 edges · 15 communities (12 shown, 3 thin omitted)
 - Extraction: 95% EXTRACTED · 5% INFERRED · 0% AMBIGUOUS · INFERRED: 26 edges (avg confidence: 0.89)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `2d7f0532`
+- Built from commit: `c3c3f673`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -19,7 +19,7 @@
 - Core Price Fetchers
 - Can Tho Store Fetchers
 - Architecture Concepts (Docs)
-- Conversion, Cache & History
+- scheduler.js
 - Pages Deploy Workflow
 - Server Bootstrap & Infra
 - Routes & Page Rendering
@@ -36,7 +36,7 @@
 1. `renderPage()` - 17 edges
 2. `inRange()` - 14 edges
 3. `num()` - 11 edges
-4. `main()` - 9 edges
+4. `main()` - 10 edges
 5. `gap()` - 9 edges
 6. `vndPerChiToLuong()` - 9 edges
 7. `usdOzToVndLuong()` - 8 edges
@@ -51,10 +51,10 @@
   scripts/backfill.js → src/history.js
 - `getHealth()` --calls--> `createHandler()`  [EXTRACTED]
   test/health.test.js → src/app.js
-- `pages.js module script` --references--> `refreshOnce`  [INFERRED]
-  pages/index.html → CLAUDE.md
-- `pages.js module script` --references--> `renderPage (src/render.js)`  [INFERRED]
-  pages/index.html → CLAUDE.md
+- `refreshWith()` --calls--> `refreshOnce()`  [EXTRACTED]
+  test/health.test.js → src/scheduler.js
+- `Huy Thanh store (embedded Next.js data)` --shares_data_with--> `Next.js self.__next_f prices payload (giamua, giaban, loaivang, tuoi, ngaythaydoigia)`  [INFERRED]
+  README.md → test/fixtures/huythanh.html
 
 ## Import Cycles
 - None detected.
@@ -67,8 +67,8 @@
 ## Communities (15 total, 3 thin omitted)
 
 ### Community 0 - "Core Price Fetchers"
-Cohesion: 0.07
-Nodes (38): fetchDay(), META, parseDay(), price(), TYPES, vnTs(), fetch(), id (+30 more)
+Cohesion: 0.10
+Nodes (34): fetchDay(), META, parseDay(), price(), TYPES, vnTs(), fetch(), id (+26 more)
 
 ### Community 1 - "Can Tho Store Fetchers"
 Cohesion: 0.12
@@ -78,33 +78,33 @@ Nodes (25): fetch(), id, jsonAt(), LABELS, nextPayload(), parse(), source, fetch
 Cohesion: 0.08
 Nodes (24): au-watch (CLAUDE.md overview), bucketize, src/convert.js gap formula (single source), CORE_SLOTS (vn_sjc, vn_pnj_ring, world_xau, fx_usdvnd), History snapshots table (src/history.js, node:sqlite), logEvent (JSON-per-line logging), refreshOnce, renderPage (src/render.js) (+16 more)
 
-### Community 3 - "Conversion, Cache & History"
-Cohesion: 0.12
-Nodes (18): gap(), GRAMS_PER_LUONG, GRAMS_PER_TROY_OZ, mid(), OZ_PER_LUONG, usdOzToVndLuong(), bucketize(), clip() (+10 more)
+### Community 3 - "scheduler.js"
+Cohesion: 0.17
+Nodes (8): CORE_SLOTS, FETCHERS, FX_CODES, FX_SLOTS, refreshOnce(), SLOTS, startScheduler(), STORE_SLOTS
 
 ### Community 4 - "Pages Deploy Workflow"
 Cohesion: 0.08
 Nodes (25): concurrency, cancel-in-progress, group, environment, runs-on, steps, name, url (+17 more)
 
 ### Community 5 - "Server Bootstrap & Infra"
-Cohesion: 0.12
-Nodes (21): ASSETS, createHandler(), createStatus(), healthReport(), createCache(), acquireSchedulerLock(), refreshOnce(), startScheduler() (+13 more)
+Cohesion: 0.08
+Nodes (27): ASSETS, createHandler(), createStatus(), healthReport(), createCache(), clip(), openHistory(), importRows() (+19 more)
 
 ### Community 6 - "Routes & Page Rendering"
-Cohesion: 0.14
-Nodes (22): DATA_DIR, fxRatio(), http, main(), NOW, pnjTier(), pool(), ROOT (+14 more)
+Cohesion: 0.13
+Nodes (25): DATA_DIR, FX, fxTier(), http, main(), NOW, pnjTier(), pool() (+17 more)
 
 ### Community 7 - "render.js"
-Cohesion: 0.31
-Nodes (15): esc(), FX_ROWS, gapHtml(), pct(), rate(), renderFx(), renderPage(), renderStores() (+7 more)
+Cohesion: 0.15
+Nodes (24): gap(), GRAMS_PER_LUONG, GRAMS_PER_TROY_OZ, mid(), OZ_PER_LUONG, usdOzToVndLuong(), bucketize(), esc() (+16 more)
 
 ### Community 8 - "Package Manifest"
 Cohesion: 0.14
 Nodes (14): dependencies, uplot@1.6.32, description, engines, node, name, private, scripts (+6 more)
 
 ### Community 9 - "Browser Charts"
-Cohesion: 0.44
-Nodes (7): baseOpts(), destroy(), draw(), gapChart(), load(), priceChart(), syncButtons()
+Cohesion: 0.38
+Nodes (9): baseOpts(), destroy(), draw(), drawFx(), fxChart(), gapChart(), load(), priceChart() (+1 more)
 
 ### Community 10 - "GitHub Pages Entry"
 Cohesion: 0.47
@@ -115,24 +115,24 @@ Cohesion: 0.18
 Nodes (13): Normalized quote {source, code, product, buy, sell, unit, currency, fetched_at}, vndPerChiToLuong (chi x10 to luong), Gia vang tai Can Tho (store price tables), Huy Thanh store (embedded Next.js data), Minh Vu store (homepage HTML table), Ngoc Tham store (proxy_banggia.php JSON), Huy Thanh 'Gia vang hom nay' page fixture, Huy Thanh gold types (24K, 24KTT, 22K, 18K, 14K, 10K; Dong/chi) (+5 more)
 
 ## Knowledge Gaps
-- **11 isolated node(s):** `PNJ gold price API (SJC bars + plain ring)`, `Environment config (PORT, REFRESH_MINUTES, DATA_DIR, *_URL overrides)`, `logEvent (JSON-per-line logging)`, `Normalized quote {source, code, product, buy, sell, unit, currency, fetched_at}`, `data/cache.json (last known values)` (+6 more)
-  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 103 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+- **11 isolated node(s):** `PNJ gold price API (SJC bars + plain ring)`, `Environment config (PORT, REFRESH_MINUTES, DATA_DIR, *_URL overrides)`, `Normalized quote {source, code, product, buy, sell, unit, currency, fetched_at}`, `Ngoc Tham store (proxy_banggia.php JSON)`, `Huy Thanh gold types (24K, 24KTT, 22K, 18K, 14K, 10K; Dong/chi)` (+6 more)
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 106 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
 - **3 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `renderPage()` connect `render.js` to `Conversion, Cache & History`, `Server Bootstrap & Infra`?**
+- **Why does `renderPage()` connect `render.js` to `Core Price Fetchers`, `Server Bootstrap & Infra`?**
   _High betweenness centrality (0.012) - this node is a cross-community bridge._
-- **What connects `PNJ gold price API (SJC bars + plain ring)`, `Environment config (PORT, REFRESH_MINUTES, DATA_DIR, *_URL overrides)`, `logEvent (JSON-per-line logging)` to the rest of the system?**
+- **What connects `PNJ gold price API (SJC bars + plain ring)`, `Environment config (PORT, REFRESH_MINUTES, DATA_DIR, *_URL overrides)`, `Normalized quote {source, code, product, buy, sell, unit, currency, fetched_at}` to the rest of the system?**
   _11 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `Core Price Fetchers` be split into smaller, more focused modules?**
-  _Cohesion score 0.07346938775510205 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.09639953542392567 - nodes in this community are weakly interconnected._
 - **Why does `inRange()` connect `Core Price Fetchers` to `Can Tho Store Fetchers`?**
-  _High betweenness centrality (0.011) - this node is a cross-community bridge._
+  _High betweenness centrality (0.010) - this node is a cross-community bridge._
 - **Should `Can Tho Store Fetchers` be split into smaller, more focused modules?**
   _Cohesion score 0.11612903225806452 - nodes in this community are weakly interconnected._
 - **Should `Architecture Concepts (Docs)` be split into smaller, more focused modules?**
   _Cohesion score 0.082010582010582 - nodes in this community are weakly interconnected._
-- **Should `Conversion, Cache & History` be split into smaller, more focused modules?**
-  _Cohesion score 0.12258064516129032 - nodes in this community are weakly interconnected._
+- **Should `Pages Deploy Workflow` be split into smaller, more focused modules?**
+  _Cohesion score 0.07692307692307693 - nodes in this community are weakly interconnected._

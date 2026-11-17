@@ -251,3 +251,52 @@ test('live record never extends a seed row; seeded history shows in 5y query', (
   assert.equal(q.sjc_sell.filter((v) => v === 141_200_000).length >= 399, true);
   h.close();
 });
+
+// --- Exchange-rate series (USD / CHF / JPY) ---
+
+function fxRates(at, { chf = 32_128.11, jpy = 167.78 } = {}, stale = false) {
+  return {
+    key: 'fx_rates', stale, ok_at: new Date(at).toISOString(), source_used: 'vcb',
+    quotes: [
+      { source: 'Vietcombank', code: 'USDVND', product: 'USD', buy: 25_550, sell: 25_930, unit: 'USD', currency: 'VND' },
+      { source: 'Vietcombank', code: 'CHFVND', product: 'CHF', buy: 31_130.1, sell: chf, unit: 'CHF', currency: 'VND' },
+      { source: 'Vietcombank', code: 'JPYVND', product: 'JPY', buy: 158.55, sell: jpy, unit: 'JPY', currency: 'VND' },
+    ],
+  };
+}
+
+test('fx_rates slot is recorded as fx_chfvnd / fx_jpyvnd with change detection; stale skipped', () => {
+  const h = openHistory(file);
+  assert.deepEqual(h.record({ ...allSlots(T0), fx_rates: fxRates(T0) }), { inserted: 6, touched: 0 });
+  assert.deepEqual(h.record({ ...allSlots(T0 + 10 * MIN), fx_rates: fxRates(T0 + 10 * MIN, { jpy: 168 }) }), { inserted: 1, touched: 5 });
+  assert.deepEqual(h.record({ fx_rates: fxRates(T0 + 20 * MIN, { chf: 1 }, true) }), { inserted: 0, touched: 0 });
+  const fx = rows().filter((r) => r.series.startsWith('fx_'));
+  assert.deepEqual(fx.map((r) => [r.series, r.sell]), [
+    ['fx_chfvnd', 32_128.11], ['fx_jpyvnd', 167.78], ['fx_jpyvnd', 168], ['fx_usdvnd', 25_930],
+  ]);
+  h.close();
+});
+
+test('query: FX buy/sell columns per currency and fx_enough', () => {
+  const h = openHistory(file);
+  h.record({ fx_rates: fxRates(T0) });
+  h.record({ fx_rates: fxRates(T0 + 10 * MIN) });
+  const q = h.query('24h', T0 + 15 * MIN);
+  assert.equal(q.chf_sell.at(-1), 32_128.11);
+  assert.equal(q.jpy_buy.at(-1), 158.55);
+  assert.equal(q.usd_sell.at(-1), null, 'USD comes from the fx_usdvnd slot, not fx_rates');
+  assert.equal(q.fx_enough, true);
+  assert.equal(q.enough, false, 'no gold data → gold charts stay empty');
+  h.close();
+});
+
+test('importSeed loads CHF/JPY series', () => {
+  const h = openHistory(file);
+  const meta = (ccy) => ({ source: 'Yahoo Finance (scaled to Vietcombank)', product: `${ccy}/VND`, unit: ccy, currency: 'VND' });
+  const res = h.importSeed(writeSeed('2026-11-17T00:00:00.000Z', {
+    fx_chfvnd: { ...meta('CHF'), rows: [[T0, T0 + HOUR, 31_000, 32_000]] },
+    fx_jpyvnd: { ...meta('JPY'), rows: [[T0, T0 + HOUR, 158, 167]] },
+  }));
+  assert.deepEqual(res.rows, { fx_chfvnd: 1, fx_jpyvnd: 1 });
+  h.close();
+});
