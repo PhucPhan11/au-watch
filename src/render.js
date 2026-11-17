@@ -43,11 +43,15 @@ const HISTORY_SECTION = `<section class="history" id="history">
     <div class="chart" id="chart-gap"></div>
   </div>
   <div class="empty" id="empty" hidden></div>
-  <div id="fx-history" hidden>
+  <div id="fx-history">
     <h3><span>Tỷ giá (đồng / 1 ngoại tệ)</span>
       <span class="seg" role="group" aria-label="Ngoại tệ" id="fx-ccy"><button type="button" data-ccy="usd">USD</button><button type="button" data-ccy="chf">CHF</button><button type="button" data-ccy="jpy">JPY</button></span>
     </h3>
-    <div class="chart" id="chart-fx"></div>
+    <div class="seg" role="group" aria-label="Khoảng thời gian tỷ giá" id="fx-range">
+      <button type="button" data-range="24h">24 giờ</button><button type="button" data-range="7d">7 ngày</button><button type="button" data-range="30d">30 ngày</button><button type="button" data-range="1y">1 năm</button><button type="button" data-range="5y">5 năm</button>
+    </div>
+    <div class="chart" id="chart-fx" hidden></div>
+    <div class="empty" id="fx-empty" hidden></div>
   </div>
 </section>
 `;
@@ -213,6 +217,7 @@ ${withHistory ? HISTORY_HEAD : ''}<style>
   .seg button + button { border-left: 1px solid #ccc; }
   .seg button[aria-pressed="true"] { background: #1d1d1f; color: #fff; }
   .chart { min-height: 40px; }
+  #fx-range { margin: 0 0 8px; flex-wrap: wrap; }
   .empty { border: 1px dashed #ccc; border-radius: 8px; padding: 24px 12px; text-align: center; color: #666; font-size: .9rem; }
   .partial { font-size: .8rem; color: #666; margin: 4px 0 0; }
   .uplot { font-family: inherit; }

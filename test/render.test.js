@@ -88,3 +88,9 @@ test('FX table: USD, CHF, JPY rows from VCB; empty slot shows placeholder', () =
   // Also on the static build (VCB / ExchangeRate-API are fetched from the browser there).
   assert.match(renderPage({ ...withWorld, fx_rates }, { withHistory: false, withStores: false }), /Tỷ giá ngoại tệ/);
 });
+
+test('FX history chart has its own 5 range buttons', () => {
+  const html = renderPage(slots);
+  const block = /id="fx-range"[\s\S]*?<\/div>/.exec(html)?.[0] ?? '';
+  for (const r of ['24h', '7d', '30d', '1y', '5y']) assert.ok(block.includes(`data-range="${r}"`), r);
+});

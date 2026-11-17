@@ -7,6 +7,8 @@
   let gapMode = params.get('gap') === 'pct' ? 'pct' : 'abs';
   const FX_CCYS = ['usd', 'chf', 'jpy'];
   let fxCcy = FX_CCYS.includes(params.get('fx')) ? params.get('fx') : 'usd';
+  let fxRange = RANGES.includes(params.get('fxrange')) ? params.get('fxrange') : '24h'; // FX chart's own range
+  let fxData = null;
   let data = null;
   let charts = [];
   let fxPlot = null;
@@ -22,7 +24,11 @@
     '7d': fmt({ day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }),
     '30d': fmt({ day: '2-digit', month: '2-digit' }),
     '1y': fmt({ day: '2-digit', month: '2-digit', year: '2-digit' }),
-    '5y': fmt({ month: '2-digit', year: 'numeric' }),
+    // vi-VN renders month+year as "tháng 05, 2022", too wide for axis ticks → "05/2022".
+    '5y': (() => {
+      const f = fmt({ month: '2-digit', year: 'numeric' });
+      return { format: (d) => { const p = Object.fromEntries(f.formatToParts(d).map((x) => [x.type, x.value])); return `${p.month}/${p.year}`; } };
+    })(),
   };
   const fullTime = fmt({ hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric' });
 
@@ -33,7 +39,21 @@
   const axisMillions = (u, splits) => splits.map((v) => `${short.format(v / 1e6)} tr`);
   const axisPct = (u, splits) => splits.map((v) => `${pct1.format(v)}%`);
 
-  function baseOpts(height) {
+  // One request per range per page load, shared by the gold and FX charts (the page reloads every 5 min).
+  const requests = new Map();
+  function getHistory(r) {
+    if (!requests.has(r)) {
+      const p = fetch(`/api/history?range=${r}`).then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
+      });
+      p.catch(() => requests.delete(r)); // allow a retry on the next click
+      requests.set(r, p);
+    }
+    return requests.get(r);
+  }
+
+  function baseOpts(height, r = range) {
     return {
       width: $('history').clientWidth,
       height,
@@ -42,7 +62,7 @@
       scales: { x: { time: true } },
       series: [{ label: 'Thời gian', value: (u, ts) => (ts == null ? '—' : fullTime.format(ts * 1e3)) }],
       axes: [
-        { values: (u, splits) => splits.map((s) => timeFmt[range].format(s * 1e3)) },
+        { values: (u, splits) => splits.map((s) => timeFmt[r].format(s * 1e3)) },
         { size: 64 },
       ],
     };
@@ -77,7 +97,7 @@
 
   // Exchange rate (đồng per 1 unit): transfer buy (dashed) and sell, with the spread as a band.
   function fxChart(t) {
-    const opts = baseOpts(chartHeight());
+    const opts = baseOpts(chartHeight(), fxRange);
     const digits = fxCcy === 'jpy' ? 2 : 0;
     const nf = new Intl.NumberFormat('vi-VN', { minimumFractionDigits: digits, maximumFractionDigits: digits });
     const value = (u, v) => (v == null ? '—' : `${nf.format(v)} đ`);
@@ -88,14 +108,39 @@
     opts.bands = [{ series: [2, 1], fill: 'rgba(46, 139, 87, 0.12)' }];
     opts.axes[1].values = (u, splits) => splits.map((v) => nf.format(v));
     opts.axes[1].size = 72;
-    return new uPlot(opts, [t, data[`${fxCcy}_buy`], data[`${fxCcy}_sell`]], $('chart-fx'));
+    return new uPlot(opts, [t, fxData[`${fxCcy}_buy`], fxData[`${fxCcy}_sell`]], $('chart-fx'));
+  }
+
+  function destroyFx() {
+    fxPlot?.destroy();
+    fxPlot = null;
+  }
+
+  function fxMessage(text) {
+    $('chart-fx').hidden = text != null;
+    $('fx-empty').hidden = text == null;
+    if (text != null) $('fx-empty').textContent = text;
   }
 
   function drawFx() {
-    fxPlot?.destroy();
-    fxPlot = null;
-    $('fx-history').hidden = !data?.fx_enough;
-    if (data?.fx_enough) fxPlot = fxChart(data.t.map((ms) => ms / 1e3));
+    destroyFx();
+    if (!fxData?.fx_enough) {
+      fxMessage('Chưa đủ dữ liệu tỷ giá cho khoảng thời gian này.');
+      return;
+    }
+    fxMessage(null);
+    fxPlot = fxChart(fxData.t.map((ms) => ms / 1e3));
+  }
+
+  async function loadFx() {
+    syncButtons();
+    try {
+      fxData = await getHistory(fxRange);
+      drawFx();
+    } catch {
+      destroyFx();
+      fxMessage('Không tải được dữ liệu tỷ giá.');
+    }
   }
 
   const chartHeight = () => (window.innerWidth < 480 ? 220 : 280);
@@ -103,13 +148,10 @@
   function destroy() {
     charts.forEach((c) => c.destroy());
     charts = [];
-    fxPlot?.destroy();
-    fxPlot = null;
   }
 
   function draw() {
     destroy();
-    drawFx();
     $('partial').hidden = true;
     if (!data.enough) {
       $('charts').hidden = true;
@@ -133,6 +175,7 @@
     document.querySelectorAll('#range button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.range === range)));
     document.querySelectorAll('#gap-mode button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.mode === gapMode)));
     document.querySelectorAll('#fx-ccy button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.ccy === fxCcy)));
+    document.querySelectorAll('#fx-range button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.range === fxRange)));
   }
 
   function syncUrl() {
@@ -140,20 +183,18 @@
     p.set('range', range);
     if (gapMode === 'pct') p.set('gap', 'pct'); else p.delete('gap');
     if (fxCcy !== 'usd') p.set('fx', fxCcy); else p.delete('fx');
+    if (fxRange !== '24h') p.set('fxrange', fxRange); else p.delete('fxrange');
     history.replaceState(null, '', `${location.pathname}?${p}`);
   }
 
   async function load() {
     syncButtons();
     try {
-      const res = await fetch(`/api/history?range=${range}`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      data = await res.json();
+      data = await getHistory(range);
       draw();
     } catch (err) {
       destroy();
       $('charts').hidden = true;
-      $('fx-history').hidden = true;
       $('empty').hidden = false;
       $('empty').textContent = 'Không tải được dữ liệu lịch sử.';
     }
@@ -185,7 +226,15 @@
     fxCcy = c;
     syncUrl();
     syncButtons();
-    drawFx();
+    if (fxData) drawFx();
+  });
+
+  $('fx-range').addEventListener('click', (e) => {
+    const r = e.target.closest('button')?.dataset.range;
+    if (!r || r === fxRange) return;
+    fxRange = r;
+    syncUrl();
+    loadFx();
   });
 
   let resizeTimer;
@@ -199,4 +248,5 @@
   });
 
   load();
+  loadFx();
 })();

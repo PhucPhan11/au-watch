@@ -108,7 +108,7 @@ It also includes `range`, `bucket_ms`, `from`, `to`, `first_recorded` `enough`, 
 Below the price table are two charts, each with a range selector (24 giờ / 7 ngày / 30 ngày / 1 năm / 5 năm):
 - **Price chart:** sell prices, with a band showing the SJC buy/sell spread, plus the converted world price.
 - **Gap chart:** the gap over time, with a toggle between đồng and %.
-- **Exchange-rate chart:** transfer buy and sell, with the spread as a band, and a USD / CHF / JPY switch (kept in the URL as `?fx=`). It is drawn whenever `fx_enough` is true, even if the gold charts don't have enough data yet.
+- **Exchange-rate chart:** transfer buy and sell, with the spread as a band, and a USD / CHF / JPY switch (kept in the URL as `?fx=`). It has its **own range buttons** (24 giờ / 7 ngày / 30 ngày / 1 năm / 5 năm, kept as `?fxrange=`), independent of the gold charts' range. When both charts use the same range, they share one `/api/history` request. The chart is drawn whenever `fx_enough` is true for its range, even if the gold charts don't have enough data yet.
 
 If there isn't enough history for the selected range, the page says so instead of drawing a chart.
 
