@@ -45,6 +45,25 @@ test('all slots filled; SJC row comes from PNJ; PNJ fetched once per cycle', asy
   assert.equal(counts.pnj, 1);
 });
 
+test('fx_rates holds USD/CHF/JPY, fx_usdvnd only USD; VCB fetched once per cycle', async () => {
+  const counts = {};
+  const slots = await refreshOnce({ cache: createCache(null), http: null, fetchers: fakeFetchers(new Set(), counts) });
+  assert.deepEqual(slots.fx_usdvnd.quotes.map((q) => q.code), ['USDVND']);
+  assert.deepEqual(slots.fx_rates.quotes.map((q) => q.code), ['USDVND', 'CHFVND', 'JPYVND']);
+  assert.equal(slots.fx_rates.source_used, 'vcb');
+  assert.equal(counts.vcb, 1);
+});
+
+test('VCB down → fx_rates falls back to ExchangeRate-API mid rates', async () => {
+  const slots = await refreshOnce({ cache: createCache(null), http: null, fetchers: fakeFetchers(new Set(['vcb'])) });
+  assert.equal(slots.fx_rates.stale, false);
+  assert.equal(slots.fx_rates.source_used, 'erapi');
+  assert.equal(slots.fx_rates.quotes.length, 3);
+  const html = renderPage(slots);
+  assert.match(html, /ExchangeRate-API \(dự phòng\)/);
+  assert.match(html, /tỷ giá tham khảo/);
+});
+
 test('world primary down → Swissquote fallback, not stale', async () => {
   const cache = createCache(null);
   const slots = await refreshOnce({ cache, http: null, fetchers: fakeFetchers(new Set(['goldapi'])) });

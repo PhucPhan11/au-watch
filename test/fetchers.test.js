@@ -59,6 +59,22 @@ test('Vietcombank: USD transfer/sell', () => {
   assert.throws(() => vcb.parse({ Data: [] }), /not found/);
 });
 
+test('Vietcombank: USD, CHF, JPY rows with cash buy; unit guard per currency', () => {
+  const quotes = vcb.parse(fixture('vcb.json'), T);
+  assert.deepEqual(quotes.map((q) => q.code), ['USDVND', 'CHFVND', 'JPYVND']);
+  quotes.forEach(assertShape);
+  const [, chf, jpy] = quotes;
+  assert.deepEqual([chf.buy_cash, chf.buy, chf.sell, chf.unit], [30_818.8, 31_130.1, 32_128.11, 'CHF']);
+  assert.deepEqual([jpy.buy_cash, jpy.buy, jpy.sell, jpy.unit], [156.96, 158.55, 167.78, 'JPY']);
+  // JPY quoted per 100 yen would be a silent unit change → rejected.
+  const usd = { currencyCode: 'USD', cash: '25520', transfer: '25550', sell: '25930' };
+  assert.throws(() => vcb.parse({ Data: [usd, { currencyCode: 'JPY', cash: '15696', transfer: '15855', sell: '16778' }] }), /range/);
+  // Missing CHF/JPY is tolerated; cash 0 → null.
+  const only = vcb.parse({ Data: [{ ...usd, cash: '0.00' }] });
+  assert.equal(only.length, 1);
+  assert.equal(only[0].buy_cash, null);
+});
+
 test('Vietcombank: date is computed in Vietnam time', () => {
   assert.equal(vcb.vnDate(new Date('2026-11-04T18:00:00Z')), '2026-11-05');
 });
@@ -68,6 +84,15 @@ test('ExchangeRate-API: USD/VND mid', () => {
   assertShape(q);
   assert.equal(q.sell, 25_769.065289);
   assert.throws(() => erapi.parse({ result: 'error' }), /unexpected/);
+});
+
+test('ExchangeRate-API: CHF/VND and JPY/VND cross rates', () => {
+  const quotes = erapi.parse(fixture('erapi.json'), T);
+  assert.deepEqual(quotes.map((q) => q.code), ['USDVND', 'CHFVND', 'JPYVND']);
+  quotes.forEach(assertShape);
+  assert.equal(Math.round(quotes[1].sell), Math.round(25_769.065289 / 0.820009)); // ≈ 31,425
+  assert.equal(quotes[2].sell.toFixed(2), (25_769.065289 / 158.39919).toFixed(2)); // ≈ 162.68
+  assert.equal(quotes[1].buy, quotes[1].sell, 'mid rate');
 });
 
 // --- Cần Thơ stores (prices per chỉ → ×10 to đ/lượng) ---

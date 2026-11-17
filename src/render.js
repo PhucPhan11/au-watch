@@ -55,6 +55,41 @@ const STORES = [
   { key: 'cantho_huythanh', name: 'Huy Thanh' },
 ];
 
+const FX_ROWS = [
+  { code: 'USDVND', label: 'USD', name: 'Đô la Mỹ', digits: 0 },
+  { code: 'CHFVND', label: 'CHF', name: 'Franc Thụy Sĩ', digits: 0 },
+  { code: 'JPYVND', label: 'JPY', name: 'Yên Nhật', digits: 2 },
+];
+const rate = (n, digits) => (n == null
+  ? '—'
+  : new Intl.NumberFormat('vi-VN', { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(n));
+
+/** USD / CHF / JPY → VND table (Vietcombank; ExchangeRate-API mid rates as fallback). */
+function renderFx(slots) {
+  const slot = slots.fx_rates;
+  const quotes = slot?.quotes ?? [];
+  const reference = slot?.source_used === 'erapi'; // mid-market: no separate cash / transfer buy
+  const rows = FX_ROWS.map(({ code, label, name, digits }) => {
+    const q = quotes.find((x) => x.code === code);
+    if (!q) return '';
+    return `<tr>
+        <td data-label="Ngoại tệ"><strong>${label}</strong> <small>${esc(name)}</small></td>
+        <td data-label="Mua tiền mặt">${reference ? '—' : rate(q.buy_cash, digits)}</td>
+        <td data-label="Mua chuyển khoản">${reference ? '—' : rate(q.buy, digits)}</td>
+        <td data-label="Bán ra">${rate(q.sell, digits)}</td>
+      </tr>`;
+  }).join('');
+  return `<section class="fx${slot?.stale ? ' stale' : ''}" id="fx">
+  <h2>Tỷ giá ngoại tệ</h2>
+  <table>
+    <thead><tr><th>Ngoại tệ</th><th>Mua tiền mặt</th><th>Mua chuyển khoản</th><th>Bán ra</th></tr></thead>
+    <tbody>${rows || '<tr><td colspan="4">Chưa có dữ liệu</td></tr>'}</tbody>
+  </table>
+  <p class="sub">Đơn vị: đồng / 1 ngoại tệ${reference ? ' (tỷ giá tham khảo, không phải giá giao dịch)' : ''}. Nguồn: ${esc(sourceName(slot))} · Cập nhật: ${time(slot?.ok_at)} ${status(slot)}</p>
+</section>
+`;
+}
+
 const gapHtml = (sell, worldVnd) => {
   const g = gap(sell, worldVnd);
   return `${g.abs >= 0 ? '+' : ''}${vnd(g.abs)} đ<br><small>${pct(g.pct)}%</small>`;
@@ -154,6 +189,10 @@ ${withHistory ? HISTORY_HEAD : ''}<style>
     td[data-label]:not(:first-child)::before { content: attr(data-label); color: #555; text-align: left; }
     .info { grid-template-columns: 1fr; }
   }
+  .fx { margin-top: 28px; }
+  .fx h2 { font-size: 1.05rem; margin: 0 0 8px; }
+  .fx .sub { margin: 6px 0 0; font-size: .8rem; }
+  .fx.stale td { background: #fff7e6; }
   .stores { margin-top: 28px; }
   .stores h2 { font-size: 1.05rem; margin: 0 0 4px; }
   .store { margin-top: 16px; }
@@ -195,7 +234,7 @@ ${withHistory ? HISTORY_HEAD : ''}<style>
     <small>Nguồn: ${esc(sourceName(fs))} · Cập nhật: ${time(fs?.ok_at)}</small> ${status(fs)}
   </div>
 </div>
-${withStores ? renderStores(slots, worldVnd) : NO_STORES_NOTE}${withHistory ? HISTORY_SECTION : NO_HISTORY_NOTE}<p class="note">Chênh lệch = giá bán ra trong nước − giá thế giới quy đổi (giá USD/oz × 1,205653 oz/lượng × tỷ giá). Chưa tính thuế, phí gia công, vận chuyển. Chỉ mang tính tham khảo.</p>
+${renderFx(slots)}${withStores ? renderStores(slots, worldVnd) : NO_STORES_NOTE}${withHistory ? HISTORY_SECTION : NO_HISTORY_NOTE}<p class="note">Chênh lệch = giá bán ra trong nước − giá thế giới quy đổi (giá USD/oz × 1,205653 oz/lượng × tỷ giá). Chưa tính thuế, phí gia công, vận chuyển. Chỉ mang tính tham khảo.</p>
 ${withHistory ? HISTORY_SCRIPTS : ''}</body>
 </html>`;
 }

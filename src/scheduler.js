@@ -14,6 +14,8 @@ export const FETCHERS = { pnj, goldapi, swissquote, vcb, erapi, ngoctham, minhvu
 const byCode = (code) => (quotes) => quotes.filter((q) => q.code === code);
 const first = (quotes) => quotes.slice(0, 1);
 const all = (quotes) => quotes;
+const FX_CODES = ['USDVND', 'CHFVND', 'JPYVND'];
+const fxCodes = (quotes) => FX_CODES.flatMap((c) => quotes.filter((q) => q.code === c));
 
 /** Cần Thơ store slots: one slot per store holding its whole price list. */
 export const STORE_SLOTS = [
@@ -27,10 +29,15 @@ export const CORE_SLOTS = [
   { key: 'vn_sjc', sources: [{ fetcher: 'pnj', pick: byCode('SJC') }] },
   { key: 'vn_pnj_ring', sources: [{ fetcher: 'pnj', pick: byCode('N24K') }] },
   { key: 'world_xau', sources: [{ fetcher: 'goldapi', pick: first }, { fetcher: 'swissquote', pick: first }] },
-  { key: 'fx_usdvnd', sources: [{ fetcher: 'vcb', pick: first }, { fetcher: 'erapi', pick: first }] },
+  { key: 'fx_usdvnd', sources: [{ fetcher: 'vcb', pick: byCode('USDVND') }, { fetcher: 'erapi', pick: byCode('USDVND') }] },
 ];
 
-export const SLOTS = [...CORE_SLOTS, ...STORE_SLOTS];
+/** Exchange-rate table (USD, CHF, JPY → VND): display-only, shares the VCB/erapi calls with fx_usdvnd. */
+export const FX_SLOTS = [
+  { key: 'fx_rates', sources: [{ fetcher: 'vcb', pick: fxCodes }, { fetcher: 'erapi', pick: fxCodes }] },
+];
+
+export const SLOTS = [...CORE_SLOTS, ...FX_SLOTS, ...STORE_SLOTS];
 
 export async function refreshOnce({ cache, http, fetchers = FETCHERS, slots = SLOTS, now = () => new Date(), onFetch = null }) {
   // Each source is requested at most once per cycle, even if several slots use it.

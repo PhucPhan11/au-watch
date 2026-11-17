@@ -70,3 +70,21 @@ test('withStores: false → no store section, note instead', () => {
   assert.doesNotMatch(html, /id="stores"/);
   assert.match(html, /Giá cửa hàng Cần Thơ chỉ có khi chạy ứng dụng trên máy/);
 });
+
+test('FX table: USD, CHF, JPY rows from VCB; empty slot shows placeholder', () => {
+  const fx_rates = {
+    key: 'fx_rates', stale: false, source_used: 'vcb', primary: true, ok_at: AT,
+    quotes: [
+      { code: 'USDVND', buy_cash: 25_520, buy: 25_550, sell: 25_930 },
+      { code: 'CHFVND', buy_cash: 30_818.8, buy: 31_130.1, sell: 32_128.11 },
+      { code: 'JPYVND', buy_cash: 156.96, buy: 158.55, sell: 167.78 },
+    ],
+  };
+  const html = renderPage({ ...withWorld, fx_rates });
+  assert.match(html, /Tỷ giá ngoại tệ/);
+  for (const s of ['25.930', '32.128', '31.130', '30.819', '156,96', '158,55', '167,78']) assert.ok(html.includes(s), s);
+  assert.match(html, /Nguồn: Vietcombank/);
+  assert.match(renderPage(slots), /id="fx"[\s\S]*?Chưa có dữ liệu/);
+  // Also on the static build (VCB / ExchangeRate-API are fetched from the browser there).
+  assert.match(renderPage({ ...withWorld, fx_rates }, { withHistory: false, withStores: false }), /Tỷ giá ngoại tệ/);
+});

@@ -73,7 +73,7 @@ async function pnjTier(tier) {
 async function fxRatio(latestYahoo) {
   let vcbSell = null;
   try {
-    vcbSell = (await vcb.fetch(http))[0].sell;
+    vcbSell = (await vcb.fetch(http)).find((q) => q.code === 'USDVND').sell;
   } catch (err) {
     logEvent('error', 'backfill_fx_ratio', { source: 'vcb', error: err.message });
     const cacheFile = join(DATA_DIR, 'cache.json');

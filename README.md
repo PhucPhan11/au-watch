@@ -44,8 +44,11 @@ Tests use responses saved in `test/fixtures/` and never touch the network.
 | PNJ plain ring 999.9 | same PNJ request | — |
 | World XAU/USD | `api.gold-api.com/price/XAU` | Swissquote public bid/ask feed (mid price) |
 | USD/VND | Vietcombank `api/exchangerates`, **sell** rate | open.er-api.com daily mid rate, shown as "tham khảo" |
+| Tỷ giá ngoại tệ table (USD, CHF, JPY → VND) | same Vietcombank request: cash buy, transfer buy, sell | open.er-api.com mid rates (CHF and JPY as cross rates via USD), shown as "tham khảo" |
 
-Each source is requested at most once per refresh (both Vietnamese rows share one PNJ request), with a 10 s timeout and no retry loop. The page shows "(dự phòng)" whenever a fallback source supplied a value.
+The exchange-rate table is display-only. It isn't stored in history, isn't part of `/health`, and doesn't affect the gap, which always uses the USD sell rate. Rates are in đồng per 1 unit, including JPY. A range check catches a switch to per-100-yen quoting. The table also appears on the GitHub Pages build.
+
+Each source is requested at most once per refresh (both Vietnamese rows share one PNJ request, and the USD row and the exchange-rate table share one Vietcombank request), with a 10 s timeout and no retry loop. The page shows "(dự phòng)" whenever a fallback source supplied a value.
 
 ### Giá vàng tại Cần Thơ
 The local app also shows every gold type listed by three Cần Thơ stores, one table per store:

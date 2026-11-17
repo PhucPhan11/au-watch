@@ -1,7 +1,7 @@
 // GitHub Pages entry point: the visitor's browser fetches current prices directly from the
 // sources (all send CORS headers except Swissquote) and renders the same page as the local app,
 // without the history charts. Reuses src/ modules unchanged.
-import { refreshOnce, CORE_SLOTS } from './src/scheduler.js';
+import { refreshOnce, CORE_SLOTS, FX_SLOTS } from './src/scheduler.js';
 import { renderPage } from './src/render.js';
 
 // Fetchers read optional URL overrides from process.env; the browser has no `process`.
@@ -23,11 +23,11 @@ function memoryCache() {
 
 async function main() {
   const cache = memoryCache();
-  // Cần Thơ stores send no CORS headers, so only the core slots are fetched from the browser.
+  // Cần Thơ stores send no CORS headers, so only the core and FX slots are fetched from the browser.
   await refreshOnce({
     cache,
     http,
-    slots: CORE_SLOTS,
+    slots: [...CORE_SLOTS, ...FX_SLOTS],
     onFetch: (e) => { if (!e.ok) console.warn(`[au-watch] ${e.source}: ${e.error}`); },
   });
   const doc = new DOMParser().parseFromString(renderPage(cache.all(), { withHistory: false, withStores: false }), 'text/html');
