@@ -3,7 +3,8 @@
 // "price unchanged" (line continues) stays distinct from "app not running" (chart gap).
 // World price and gap are derived per bucket at query time from convert.js.
 import { DatabaseSync } from 'node:sqlite';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, readFileSync, existsSync } from 'node:fs';
+import { gunzipSync } from 'node:zlib';
 import { dirname } from 'node:path';
 import { mid, usdOzToVndLuong, gap } from './convert.js';
 
@@ -16,6 +17,7 @@ export const RANGES = {
   '7d': { span: 7 * DAY, bucket: HOUR },
   '30d': { span: 30 * DAY, bucket: DAY },
   '1y': { span: 365 * DAY, bucket: DAY },
+  '5y': { span: 5 * 365 * DAY, bucket: DAY },
 };
 
 const SERIES = ['vn_sjc', 'vn_pnj_ring', 'world_xau', 'fx_usdvnd'];
@@ -38,9 +40,14 @@ export function openHistory(file, { graceMs = 10 * MIN } = {}) {
       currency TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS snapshots_series_ts ON snapshots(series, ts);
+    CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
   `);
+  // origin: 'live' (recorded by the scheduler) or 'seed' (imported backfill, replaceable).
+  if (!db.prepare('PRAGMA table_info(snapshots)').all().some((c) => c.name === 'origin')) {
+    db.exec("ALTER TABLE snapshots ADD COLUMN origin TEXT NOT NULL DEFAULT 'live'");
+  }
 
-  const latest = db.prepare('SELECT id, buy, sell FROM snapshots WHERE series = ? ORDER BY ts DESC, id DESC LIMIT 1');
+  const latest = db.prepare('SELECT id, buy, sell, origin FROM snapshots WHERE series = ? ORDER BY ts DESC, id DESC LIMIT 1');
   const insert = db.prepare(`INSERT INTO snapshots (series, source, product, ts, seen_until, buy, sell, unit, currency)
                              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`);
   const touch = db.prepare('UPDATE snapshots SET seen_until = ? WHERE id = ? AND seen_until < ?');
@@ -48,6 +55,24 @@ export function openHistory(file, { graceMs = 10 * MIN } = {}) {
                               WHERE ts <= ? AND seen_until + ? >= ? ORDER BY series, ts, id`);
   const firstTs = db.prepare('SELECT MIN(ts) AS t FROM snapshots');
   const countRows = db.prepare('SELECT COUNT(*) AS n FROM snapshots');
+  const liveSpans = db.prepare(`SELECT ts, seen_until FROM snapshots WHERE series = ? AND origin = 'live' ORDER BY ts`);
+  const insertSeed = db.prepare(`INSERT INTO snapshots (series, source, product, ts, seen_until, buy, sell, unit, currency, origin)
+                                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'seed')`);
+  const getMeta = db.prepare('SELECT value FROM meta WHERE key = ?');
+  const setMeta = db.prepare('INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value');
+
+  /** Insert seed rows clipped to the gaps between live rows (live data always wins). */
+  function importRows(series, info, rows) {
+    const live = liveSpans.all(series);
+    let inserted = 0;
+    for (const [ts, until, buy, sell] of rows) {
+      for (const [a, b] of clip(ts, until, live)) {
+        insertSeed.run(series, info.source, info.product, a, b, buy, sell, info.unit, info.currency);
+        inserted++;
+      }
+    }
+    return inserted;
+  }
 
   return {
     /** Total stored rows (for /health). */
@@ -65,7 +90,8 @@ export function openHistory(file, { graceMs = 10 * MIN } = {}) {
           if (!slot || slot.stale || !q || !slot.ok_at) continue;
           const ts = Date.parse(slot.ok_at);
           const last = latest.get(slot.key);
-          if (last && last.buy === q.buy && last.sell === q.sell) {
+          // Never extend a seed row: it would be dropped when a newer seed is imported.
+          if (last && last.origin === 'live' && last.buy === q.buy && last.sell === q.sell) {
             touch.run(ts, last.id, ts);
             touched++;
           } else {
@@ -92,8 +118,49 @@ export function openHistory(file, { graceMs = 10 * MIN } = {}) {
       return { range, ...bucketize(rows, { from, to, bucketMs: r.bucket, graceMs }), first_recorded: first ?? null };
     },
 
+    /**
+     * Import a backfill seed (gzipped JSON from scripts/backfill.js). Replaces earlier seed rows,
+     * never touches live rows. Skipped when the file is missing or this seed was already imported.
+     */
+    importSeed(file) {
+      if (!existsSync(file)) return { imported: false, reason: 'missing' };
+      const seed = JSON.parse(gunzipSync(readFileSync(file)).toString('utf8'));
+      if (!seed?.generated_at || typeof seed.series !== 'object') throw new Error('Invalid history seed');
+      if (getMeta.get('seed_generated_at')?.value === seed.generated_at) return { imported: false, reason: 'already imported' };
+      const counts = {};
+      db.exec('BEGIN');
+      try {
+        db.exec("DELETE FROM snapshots WHERE origin = 'seed'");
+        for (const [series, s] of Object.entries(seed.series)) {
+          if (!SERIES.includes(series)) continue;
+          counts[series] = importRows(series, s, s.rows ?? []);
+        }
+        setMeta.run('seed_generated_at', seed.generated_at);
+        db.exec('COMMIT');
+      } catch (err) {
+        db.exec('ROLLBACK');
+        throw err;
+      }
+      return { imported: true, generated_at: seed.generated_at, rows: counts };
+    },
+
     close() { db.close(); },
   };
+}
+
+/** Parts of [from, to] not covered by `spans` ([{ts, seen_until}] sorted by ts). Pure. */
+export function clip(from, to, spans) {
+  const out = [];
+  let start = from;
+  for (const { ts, seen_until: end } of spans) {
+    if (end < start) continue;
+    if (ts > to) break;
+    if (ts > start) out.push([start, Math.min(to, ts - 1)]);
+    start = Math.max(start, end + 1);
+    if (start > to) return out;
+  }
+  if (start <= to) out.push([start, to]);
+  return out;
 }
 
 /**

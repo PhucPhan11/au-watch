@@ -25,6 +25,8 @@ au-watch shows Vietnamese gold buy/sell prices next to the world spot price conv
 
 **History (`src/history.js`)** — `snapshots` table via `node:sqlite`. A row is inserted only when a series' buy/sell changes; otherwise the latest row's `seen_until` is extended. This lets charts distinguish "price unchanged" from "app not running". World VND/lượng and gap are *not* stored; `bucketize` computes them per time bucket using `src/convert.js` (the single source of the gap formula).
 
+**Backfill (`scripts/backfill.js`, `src/backfill/`)** — `npm run backfill` fetches past prices (PNJ day change log; Yahoo `GC=F`/`USDVND=X` scaled to VCB) per range tier, skipping tiers that fail, and writes the committed `seed/history.json.gz`. `history.importSeed` loads it at server start (lock holder only, once per `generated_at`) as `origin='seed'` rows clipped around `origin='live'` rows — live data always wins. `src/backfill/` is Node-only and not part of the Pages build.
+
 **Rendering** — `src/render.js` `renderPage(slots, { withHistory, withStores })` produces the full HTML server-side; `src/public/charts.js` is the browser-side chart code.
 
 **GitHub Pages (`pages/`, `.github/workflows/pages.yml`)** — the workflow copies `pages/*` plus `src/convert.js`, `src/render.js`, `src/scheduler.js` and `src/fetchers/` into `_site/`. Those modules therefore must stay browser-safe: no `node:` imports, and `process.env` access only (pages.js shims `globalThis.process`). `pages/pages.js` runs `refreshOnce` with `CORE_SLOTS` only, an in-memory cache, and a header-less `fetch` (to avoid CORS preflight), then renders with history and stores disabled. Swissquote and the Cần Thơ stores have no CORS headers, so they only work in the local app.

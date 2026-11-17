@@ -87,7 +87,7 @@ snapshots(id, series, source, product, ts, seen_until, buy, sell, unit, currency
 - **Derived values.** The world price in VND/lượng and the gap are not stored. The history API computes them for each time bucket with the same formula as the current-price table.
 
 ### History API
-`GET /api/history?range=24h|7d|30d|1y` (default `24h`; any other value returns HTTP 400)
+`GET /api/history?range=24h|7d|30d|1y|5y` (default `24h`; any other value returns HTTP 400)
 
 | Range | Bucket | Points |
 |---|---|---|
@@ -95,13 +95,14 @@ snapshots(id, series, source, product, ts, seen_until, buy, sell, unit, currency
 | 7d | 1 hour | 168 |
 | 30d | 1 day | 30 |
 | 1y | 1 day | 365 |
+| 5y | 1 day | 1825 |
 
 Each bucket holds the latest value seen in it. A bucket with no data is `null`. The response uses column arrays:
 `t` (bucket end, epoch ms), `sjc_buy`, `sjc_sell`, `ring_sell`, `world_vnd_luong`, `gap_sjc_abs`, `gap_sjc_pct`, `gap_ring_abs`, `gap_ring_pct`.
 It also includes `range`, `bucket_ms`, `from`, `to`, `first_recorded` and `enough`, which is `true` when at least 2 buckets have a gap value.
 
 ### Charts
-Below the price table are two charts, each with a range selector (24 giờ / 7 ngày / 30 ngày / 1 năm):
+Below the price table are two charts, each with a range selector (24 giờ / 7 ngày / 30 ngày / 1 năm / 5 năm):
 - **Price chart:** sell prices, with a band showing the SJC buy/sell spread, plus the converted world price.
 - **Gap chart:** the gap over time, with a toggle between đồng and %.
 
@@ -112,7 +113,24 @@ Stop the app, then delete the database files:
 ```bash
 rm data/history.db data/history.db-wal data/history.db-shm
 ```
-The app creates an empty database on the next start. `data/cache.json`, which holds the latest values for the price table, is a separate file.
+On the next start the app creates a new database and imports the committed backfill seed into it (see below). `data/cache.json`, which holds the latest values for the price table, is a separate file.
+
+### Backfill (past prices)
+`npm run backfill` fetches past prices for the four charted series and saves them to **`seed/history.json.gz`**. This file is committed. The script then imports the seed into `data/history.db`. When the server starts, the process holding the scheduler lock imports the seed too, so a fresh clone has history without fetching anything. A seed is imported only once; the `meta` table records its `generated_at`.
+
+| Series | Source | Resolution |
+|---|---|---|
+| SJC bar, PNJ ring | PNJ change log (`get-gold-price-history?zone=00&date=YYYYMMDD`, Hồ Chí Minh zone), one request per day | Every intraday price change, about 5 years back |
+| World gold (USD/oz) | Yahoo Finance `GC=F` | 5m for the last 7 days, 15m to 60 days, 1h to 1 year, 1 day to 5 years |
+| USD/VND | Yahoo Finance `USDVND=X`, scaled to Vietcombank | Same as world gold |
+
+- **Range tiers.** The tiers (24h/7d, 30d, 1y, 5y) are fetched independently. If one fails, it is logged (`backfill_tier`) and skipped, and the rest are still saved. A single PNJ day that fails is logged (`backfill_day`) and skipped.
+- **Live data always wins.** Seed rows (`origin = 'seed'`) are clipped to the gaps between rows recorded by the scheduler (`origin = 'live'`). Importing a newer seed replaces the old seed rows and never touches live rows.
+- **World gold is the COMEX futures price (`GC=F`), not spot.** The two are usually within a few USD/oz. gold-api.com, the live source, has no free history API.
+- **USD/VND is scaled.** Yahoo gives a mid-market rate, about 0.8% below Vietcombank's sell rate. Every point is multiplied by `VCB sell ÷ Yahoo latest` (stored as `fx_ratio` in the seed), so backfilled gaps line up with live ones. Vietcombank's own history (`?date=`) can't be used for 5 years because of its rate limit of one request per 5 minutes.
+- **Cần Thơ stores are not backfilled.** They have no history and aren't charted.
+
+Rerun `npm run backfill` to refresh the seed, then commit `seed/history.json.gz`.
 
 ### Health check
 `GET /health` always returns HTTP 200 while the process is running, even when a price source is down.
@@ -163,7 +181,7 @@ python -m http.server 8080 --directory _site     # then open http://localhost:80
 - gold-api.com and Swissquote are free, unofficial feeds with no SLA and no published terms found. open.er-api.com updates once a day.
 - PNJ prices are for the Hồ Chí Minh zone (`zone=00`). PNJ's API returns values in units of 10,000 đ, which the app multiplies to get đ/lượng.
 - The gap ignores VAT, import costs, fabrication and transport. It is for reference only.
-- History starts when the app first runs. There is no backfill, so the longer ranges stay empty until enough data has been recorded.
+- Backfilled history is an approximation: world gold uses COMEX futures, and USD/VND is Yahoo's mid rate scaled by a single ratio (see Backfill).
 - Old history is never deleted. At one row per price change, it grows by a few MB per year.
 - There are no alerts or user accounts, and no custom domain, CDN or analytics.
 - **Cần Thơ stores are read from their websites, not official APIs.**

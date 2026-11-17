@@ -1,6 +1,6 @@
 // History charts (browser). Data: GET /api/history?range=… (column arrays, t in epoch ms).
 (() => {
-  const RANGES = ['24h', '7d', '30d', '1y'];
+  const RANGES = ['24h', '7d', '30d', '1y', '5y'];
   const TZ = 'Asia/Ho_Chi_Minh';
   const params = new URLSearchParams(location.search);
   let range = RANGES.includes(params.get('range')) ? params.get('range') : '24h';
@@ -19,6 +19,7 @@
     '7d': fmt({ day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }),
     '30d': fmt({ day: '2-digit', month: '2-digit' }),
     '1y': fmt({ day: '2-digit', month: '2-digit', year: '2-digit' }),
+    '5y': fmt({ month: '2-digit', year: 'numeric' }),
   };
   const fullTime = fmt({ hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric' });
 

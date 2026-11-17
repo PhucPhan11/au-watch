@@ -77,7 +77,7 @@ export function createHandler({ cache, history, status }) {
       try {
         json(res, 200, history.query(range));
       } catch (err) {
-        if (err instanceof RangeError) json(res, 400, { error: 'range must be one of 24h, 7d, 30d, 1y' });
+        if (err instanceof RangeError) json(res, 400, { error: 'range must be one of 24h, 7d, 30d, 1y, 5y' });
         else { console.error('[history] query failed:', err); json(res, 500, { error: 'history unavailable' }); }
       }
       return;

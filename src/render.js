@@ -31,7 +31,7 @@ const HISTORY_HEAD = '<link rel="stylesheet" href="/assets/uPlot.min.css">\n';
 const HISTORY_SECTION = `<section class="history" id="history">
   <h2>Lịch sử giá</h2>
   <div class="seg" role="group" aria-label="Khoảng thời gian" id="range">
-    <button type="button" data-range="24h">24 giờ</button><button type="button" data-range="7d">7 ngày</button><button type="button" data-range="30d">30 ngày</button><button type="button" data-range="1y">1 năm</button>
+    <button type="button" data-range="24h">24 giờ</button><button type="button" data-range="7d">7 ngày</button><button type="button" data-range="30d">30 ngày</button><button type="button" data-range="1y">1 năm</button><button type="button" data-range="5y">5 năm</button>
   </div>
   <p class="partial" id="partial" hidden></p>
   <div id="charts">

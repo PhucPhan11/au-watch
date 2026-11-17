@@ -5,7 +5,9 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { openHistory, bucketize, RANGES } from '../src/history.js';
+import { openHistory, bucketize, clip, RANGES } from '../src/history.js';
+import { writeFileSync } from 'node:fs';
+import { gzipSync } from 'node:zlib';
 import { usdOzToVndLuong, gap } from '../src/convert.js';
 
 const MIN = 60_000;
@@ -110,7 +112,7 @@ test('history survives close and reopen (restart)', () => {
 test('each range returns its bucket size and point count', () => {
   const h = openHistory(file);
   h.record(allSlots(T0));
-  const expected = { '24h': [10 * MIN, 144], '7d': [HOUR, 168], '30d': [24 * HOUR, 30], '1y': [24 * HOUR, 365] };
+  const expected = { '24h': [10 * MIN, 144], '7d': [HOUR, 168], '30d': [24 * HOUR, 30], '1y': [24 * HOUR, 365], '5y': [24 * HOUR, 1825] };
   for (const [range, [bucket, count]] of Object.entries(expected)) {
     const q = h.query(range, T0 + 5 * MIN);
     assert.equal(q.bucket_ms, bucket, range);
@@ -188,4 +190,64 @@ test('empty database: nothing recorded, not enough', () => {
   assert.equal(q.first_recorded, null);
   assert.equal(q.enough, false);
   assert.ok(q.sjc_sell.every((v) => v === null));
+});
+
+// --- Backfill seed import ---
+
+function writeSeed(generated_at, series) {
+  const f = join(dir, 'seed.json.gz');
+  writeFileSync(f, gzipSync(JSON.stringify({ version: 1, generated_at, series })));
+  return f;
+}
+const SJC_META = { source: 'PNJ', product: 'SJC', unit: 'luong', currency: 'VND' };
+
+test('clip: returns the parts of an interval not covered by spans', () => {
+  const spans = [{ ts: 10, seen_until: 20 }, { ts: 30, seen_until: 40 }];
+  assert.deepEqual(clip(0, 50, spans), [[0, 9], [21, 29], [41, 50]]);
+  assert.deepEqual(clip(12, 18, spans), []);
+  assert.deepEqual(clip(15, 35, spans), [[21, 29]]);
+  assert.deepEqual(clip(0, 5, []), [[0, 5]]);
+});
+
+test('importSeed fills gaps around live rows and never overwrites them', () => {
+  const h = openHistory(file);
+  h.record(allSlots(T0)); // live vn_sjc row at T0 (sell 141.2M)
+  h.record(allSlots(T0 + 30 * MIN)); // extends it to T0+30m
+  const seed = writeSeed('2026-11-17T00:00:00.000Z', {
+    vn_sjc: { ...SJC_META, rows: [[T0 - HOUR, T0 + HOUR, 100_000_000, 101_000_000]] },
+  });
+  const res = h.importSeed(seed);
+  assert.deepEqual(res.rows, { vn_sjc: 2 });
+  const sjc = rows().filter((r) => r.series === 'vn_sjc');
+  assert.deepEqual(sjc.map((r) => [r.ts, r.seen_until, r.sell]), [
+    [T0 - HOUR, T0 - 1, 101_000_000],
+    [T0, T0 + 30 * MIN, 141_200_000], // live row untouched
+    [T0 + 30 * MIN + 1, T0 + HOUR, 101_000_000],
+  ]);
+  h.close();
+});
+
+test('importSeed: same seed is skipped, newer seed replaces older seed rows, missing file is ignored', () => {
+  const h = openHistory(file);
+  const a = writeSeed('2026-11-17T00:00:00.000Z', { vn_sjc: { ...SJC_META, rows: [[T0, T0 + HOUR, 1e8, 1.01e8]] } });
+  assert.equal(h.importSeed(a).imported, true);
+  assert.deepEqual(h.importSeed(a), { imported: false, reason: 'already imported' });
+  const b = writeSeed('2026-11-18T00:00:00.000Z', { vn_sjc: { ...SJC_META, rows: [[T0, T0 + 2 * HOUR, 1e8, 1.02e8]] } });
+  assert.equal(h.importSeed(b).imported, true);
+  assert.deepEqual(rows().map((r) => [r.ts, r.seen_until, r.sell]), [[T0, T0 + 2 * HOUR, 1.02e8]]);
+  assert.deepEqual(h.importSeed(join(dir, 'nope.gz')), { imported: false, reason: 'missing' });
+  h.close();
+});
+
+test('live record never extends a seed row; seeded history shows in 5y query', () => {
+  const h = openHistory(file);
+  h.importSeed(writeSeed('2026-11-17T00:00:00.000Z', {
+    vn_sjc: { ...SJC_META, rows: [[T0 - 400 * 24 * HOUR, T0 - HOUR, 139_000_000, 141_200_000]] },
+  }));
+  h.record(allSlots(T0)); // same sjc values as the seed row, still inserted as a live row
+  assert.equal(rows().filter((r) => r.series === 'vn_sjc').length, 2);
+  const q = h.query('5y', T0);
+  assert.equal(q.sjc_sell.at(-1), 141_200_000);
+  assert.equal(q.sjc_sell.filter((v) => v === 141_200_000).length >= 399, true);
+  h.close();
 });

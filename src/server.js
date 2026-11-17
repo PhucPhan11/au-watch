@@ -25,6 +25,13 @@ const lock = acquireSchedulerLock(join(DATA_DIR, 'scheduler.lock'));
 let timer = null;
 if (lock) {
   status.scheduler = 'running';
+  // Backfilled history (committed seed from `npm run backfill`); imported once per seed version.
+  try {
+    const seed = history.importSeed(fileURLToPath(new URL('../seed/history.json.gz', import.meta.url)));
+    logEvent('info', 'history_seed', seed);
+  } catch (err) {
+    logEvent('error', 'history_seed', { error: err.message });
+  }
   const http = makeHttp({ userAgent: process.env.USER_AGENT || 'au-watch/0.1' });
   timer = startScheduler({ cache, http, history, status, intervalMs: minutes * 60_000 });
 } else {
